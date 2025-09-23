@@ -6,7 +6,7 @@ import PyPDF2
 
 st.set_page_config(page_title="Resume ↔ JD Analyzer", page_icon="🔎", layout="centered")
 
-st.title("🔎 Resume ↔ Job Description Analyzer")
+st.title("🔎 Resume ↔ Job Description Comparison and Match Estimation")
 
 jd = st.text_area("Paste the Job Description", height=220, placeholder="Responsibilities, requirements, tech stack...")
 uploaded = st.file_uploader("Upload your resume (PDF)", type=["pdf"])
