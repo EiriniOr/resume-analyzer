@@ -37,13 +37,13 @@ if st.button("Analyze", disabled=not (jd and uploaded)):
 
     st.markdown("### ✅ Suggestions")
     bullets = []
-    if score < 0.7: bullets.append("Tailor the **summary** to echo the job description’s language.")
+    if score < 0.7: bullets.append("Tailor the **summary** to echo the JD’s language.")
     if len(missing) > 0: bullets.append("Add these missing keywords where truthful: " + ", ".join(missing[:20]) + ("…" if len(missing)>20 else ""))
     if "python" in jd_c and "python" not in res_c: bullets.append("Show **Python** impact: projects, repos, metrics.")
     if "sql" in jd_c and "sql" not in res_c: bullets.append("Add an SQL bullet with query/report results.")
     if "ml" in jd_c and "ml" not in res_c: bullets.append("Mention models, data size, and evaluation metrics.")
     if bullets: st.write("\n".join([f"- {b}" for b in bullets]))
-    else: st.write("- Looks like a strong match! Minor wording tweaks only to better match job description, while being truthful.")
+    else: st.write("- Strong match! Minor wording tweaks to match the job description better only.")
 
     with st.expander("View extracted resume text (debug)"):
         st.write(resume_text[:6000])
