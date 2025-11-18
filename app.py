@@ -298,19 +298,34 @@ if analyze:
 
     with col1:
         title_display = job_title or "this role"
-        st.subheader(f"Match score for **{title_display}**: **{overall_pct:.1f}%**")
 
+        # Decide label + color based on score
         if overall >= 0.70:
             label = "Strong match"
-            color = "#22c55e"
+            color = "#22c55e"   # green
         elif overall >= 0.50:
-            label = "Moderate match"
-            color = "#a3e635"
+            label = "Good match"
+            color = "#a3e635"   # yellow-green
         else:
-            label = "Needs improvement, follow suggestions"
-            color = "#f97316"
+            label = "Needs improvement, follow suggestions!"
+            color = "#f97316"   # orange / red
 
-        st.markdown(f"**ATS-style impression:** {label}")
+        # Colored score + colored impression
+        st.markdown(
+            f"""
+            <div style="font-size: 1.1rem; margin-bottom: 0.3rem;">
+            Match score for <strong>{title_display}</strong>:
+            <span style="color: {color}; font-weight: 700;">
+                {overall_pct:.1f}%
+            </span>
+            </div>
+            <div style="font-size: 0.95rem; color: {color}; margin-bottom: 0.8rem;">
+            ATS-style impression: <strong>{label}</strong>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
 
         parts = pd.DataFrame(
             [
