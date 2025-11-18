@@ -19,13 +19,13 @@ except Exception:
 
 # -------------------- UI CONFIG --------------------
 st.set_page_config(
-    page_title="ATS-style CV and Job Ad Matcher",
+    page_title="ATS-style CV and Job Ad Match Estimation",
     layout="wide"
 )
 
-st.title("ATS-style CV and Job Ad Matcher")
+st.title("ATS-style CV and Job Ad Match Estimation")
 st.caption(
-    "Compare any resume to any job ad. Get an ATS-style match score plus suggestions to improve your CV for this role."
+    "Compare your CV to any job ad. Get an ATS-style match score plus practical suggestions to improve your chances for this role."
 )
 
 # -------------------- CONFIG / CONSTANTS --------------------
@@ -151,12 +151,19 @@ def detect_sections(text: str) -> dict:
     return present
 
 # -------------------- SIDEBAR: INPUT --------------------
-st.sidebar.header("About this App")
-st.sidebar.info(
-    "Upload your resume and paste any job ad.\n\n"
-    "The app calculates an ATS-style match score, "
-    "highlights missing keywords, and gives suggestions "
-    "to improve your CV for that specific role."
+st.sidebar.markdown(
+    """
+    **About this app**
+
+    <small>
+    • Upload your CV and paste the job ad<br>
+    • Get an ATS-style match score<br>
+    • See missing keywords and practical suggestions<br>
+    • Improve your chance to be selected for that specific role
+    • (Optional) Use the json provided with LLMs like ChatGPT to integrate missing words into your current CV.
+    </small>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.sidebar.header("Language")
