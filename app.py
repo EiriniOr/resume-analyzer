@@ -1,14 +1,14 @@
-import io, re, json, textwrap
-from collections import Counter, defaultdict
+import io
+import re
+import json
+from collections import Counter
 
 import streamlit as st
 import pandas as pd
 
-# Lightweight NLP & similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Resume file types
 import PyPDF2
 try:
     import docx  # python-docx
@@ -18,105 +18,50 @@ except Exception:
 
 # -------------------- UI CONFIG --------------------
 st.set_page_config(
-    page_title="Resume ↔ Job Ad Matcher",
-    page_icon="🧠",
+    page_title="ATS-style Resume Job Ad Matcher",
     layout="wide"
 )
-st.title("🧠 Resume ↔ Job Ad Matcher")
 
+st.title("ATS-style Resume ↔ Job Ad Matcher")
 st.caption(
-    "Compare any resume to any job ad. We score the match and suggest concrete improvements."
+    "Compare any resume to any job ad. Get a match score plus suggestions to improve your CV for this role."
 )
 
-# -------------------- ROLE PRESETS (OPTIONAL) --------------------
-ROLE_PRESETS = {
-    "Generic / Other": {
-        # No fixed taxonomy – uses job ad keywords + impact only.
-        "core": [],
-        "ml": [],
-        "viz": [],
-        "data": [],
-        "quality": [],
-        "ops": [],
-    },
-    "Data Scientist": {
-        "core": [
-            "python","pandas","numpy","scikit-learn","sklearn","statistics",
-            "sql","experiment","ab testing","hypothesis","regression",
-            "classification","cross-validation","feature engineering","pipelines",
-            "model evaluation","roc auc","precision","recall","f1",
-            "confusion matrix","xgboost","lightgbm","random forest","time series",
-            "forecasting","causal","uplift","bayesian"
-        ],
-        "ml": [
-            "xgboost","lightgbm","random forest","svm","logistic regression",
-            "linear regression","kmeans","dbscan","prophet","arima","lstm",
-            "transformer","nlp","llm","bert","shap","lime","explainability","fairness"
-        ],
-        "viz": ["power bi","tableau","plotly","matplotlib","seaborn","looker"],
-        "cloud": ["aws","gcp","azure","databricks","vertex ai","sagemaker","fabric"],
-    },
-    "ML Engineer": {
-        "core": [
-            "python","pandas","numpy","pytorch","tensorflow","mlops","docker",
-            "kubernetes","api","fastapi","looker","airflow","mlflow","wandb",
-            "dvc","feature store","model registry","monitoring","inference",
-            "latency","throughput"
-        ],
-        "ml": [
-            "pytorch","tensorflow","onnx","torchserve","triton","hf transformers",
-            "distillation","quantization","vector db","faiss","chroma","weaviate",
-            "rag","retrieval","embedding"
-        ],
-        "cloud": [
-            "aws","gcp","azure","kubernetes","terraform","helm","ci/cd",
-            "github actions","cloud run","vertex ai","sagemaker"
-        ],
-        "data": ["spark","databricks","bigquery","snowflake","kafka"],
-    },
-    "Data Engineer": {
-        "core": [
-            "sql","data modeling","etl","elt","pipelines","airflow","dbt",
-            "orchestration","dimensional modeling","star schema","warehouse",
-            "lakehouse","spark","databricks","kafka","flink"
-        ],
-        "cloud": [
-            "gcp","bigquery","pubsub","dataflow","aws","glue","redshift",
-            "kinesis","azure","synapse","fabric"
-        ],
-        "quality": ["testing","great expectations","observability","metadata","data lineage"],
-        "ops": ["docker","kubernetes","terraform","ci/cd"],
-    },
-    "Data Analyst": {
-        "core": [
-            "sql","excel","power bi","tableau","looker","dashboards","storytelling",
-            "kpi","ab testing","hypothesis","segmentation","cohort","retention"
-        ],
-        "stats": ["statistics","anova","regression","forecast","time series","seasonality"],
-        "py": ["python","pandas","numpy","plotly","matplotlib","seaborn"],
-        "viz": ["power bi","tableau","looker","dashboards"],
-    }
-}
-
-# Default component weights
-DEFAULT_WEIGHTS = {
-    "tfidf": 0.40,
-    "core": 0.25,
-    "ml": 0.15,
-    "viz_or_data_or_ops": 0.10,  # depends on role
-    "impact": 0.10,              # metrics/impact verbs
+# -------------------- CONFIG / CONSTANTS --------------------
+STOP = {
+    "and","the","for","with","you","are","to","of","in","on","a","an","by","at",
+    "as","or","vs","be","is","was","were","from","that","this","it","your","our",
+    "we","they","their","them","his","her","its","will","can","may","might"
 }
 
 IMPACT_PATTERNS = [
     r"\b\d{1,3}%\b",                      # percentages
     r"\b\d{1,3}(?:\.\d+)?\s*(?:k|m|b)\b", # 10k, 3.2M
-    r"\b(?:reduced|improved|increased|decreased|cut|boosted)\b",
-    r"\b(?:latency|throughput|accuracy|f1|precision|recall|auc|rmse|mae|revenue|cost)\b",
+    r"\b(?:reduced|improved|increased|decreased|cut|boosted|saved|grew)\b",
+    r"\b(?:revenue|cost|profit|latency|throughput|accuracy|conversion|kpi|sales)\b",
 ]
 
-STOP = {
-    "and","the","for","with","you","are","to","of","in","on","a","an","by",
-    "at","as","or","vs","be","is","was","were","from","that","this"
+SOFT_SKILLS = {
+    "communication","teamwork","collaboration","leadership","problem solving",
+    "critical thinking","adaptability","flexibility","time management",
+    "organisation","organization","stakeholder management","ownership",
+    "initiative","creativity","empathy","customer focus","detail oriented",
+    "self-motivated","proactive","analytical","negotiation","presentation"
+}
+
+SECTION_HINTS = {
+    "experience": ["experience","work history","professional experience","employment"],
+    "education": ["education","studies","degree","bachelor","master","phd"],
+    "skills": ["skills","competencies","technologies","tech stack"],
+    "projects": ["projects","portfolio","case study","case studies"],
+}
+
+# weights for components 
+DEFAULT_WEIGHTS = {
+    "similarity": 0.40,
+    "keywords": 0.35,
+    "soft_skills": 0.15,
+    "impact": 0.10,
 }
 
 # -------------------- HELPERS --------------------
@@ -130,14 +75,21 @@ def read_docx(file) -> str:
     d = docx.Document(io.BytesIO(file.read()))
     return "\n".join(p.text for p in d.paragraphs)
 
-def clean(txt: str) -> str:
-    txt = txt.lower()
-    txt = re.sub(r"[^a-z0-9+#.\-_/()%\s]", " ", txt)
-    txt = re.sub(r"\s+", " ", txt).strip()
-    return txt
+def clean(text: str) -> str:
+    if not text:
+        return ""
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9+#.\-_/()%\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
-def tokenize(txt: str):
-    return [w for w in re.findall(r"[a-z0-9+#.\-_/()%]{2,}", txt) if w not in STOP]
+def tokenize(text: str):
+    if not text:
+        return []
+    return [
+        w for w in re.findall(r"[a-z0-9+#.\-_/()%]{2,}", text.lower())
+        if w not in STOP
+    ]
 
 def tfidf_cosine(a: str, b: str) -> float:
     vec = TfidfVectorizer(ngram_range=(1, 2), min_df=1, stop_words="english")
@@ -145,67 +97,34 @@ def tfidf_cosine(a: str, b: str) -> float:
     return float(cosine_similarity(X[0], X[1])[0, 0])
 
 def count_hits(text: str, terms: list[str]) -> tuple[int, list[str]]:
-    found = []
+    if not text or not terms:
+        return 0, []
+    text = text.lower()
+    terms = [t.lower() for t in terms]
     T = " " + text + " "
+    found = []
     for t in set(terms):
         if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", T):
             found.append(t)
     return len(found), sorted(found)
 
-def find_impact_signals(text: str) -> int:
-    return sum(len(re.findall(p, text)) for p in IMPACT_PATTERNS)
-
 def unique_missing(required: list[str], present: list[str]) -> list[str]:
     pres = set(present)
     return [t for t in required if t not in pres]
 
-# -------------------- SIDEBAR --------------------
-st.sidebar.header("Target profile (optional)")
-role = st.sidebar.selectbox(
-    "Which profile are you aiming for?",
-    list(ROLE_PRESETS.keys()),
-    index=0
-)
-bundle = ROLE_PRESETS[role]
+def find_impact_signals(text: str) -> int:
+    if not text:
+        return 0
+    return sum(len(re.findall(p, text.lower())) for p in IMPACT_PATTERNS)
 
-# choose secondary category depending on role
-if role in ("Data Scientist", "Data Analyst"):
-    secondary_key = "viz"
-elif role == "ML Engineer":
-    secondary_key = "data"
-elif role == "Data Engineer":
-    secondary_key = "quality"
-else:
-    secondary_key = "other"  # Generic / Other
+def detect_sections(text: str) -> dict:
+    text_low = text.lower()
+    present = {}
+    for name, hints in SECTION_HINTS.items():
+        present[name] = any(h in text_low for h in hints)
+    return present
 
-st.sidebar.markdown("---")
-st.sidebar.header("Scoring weights")
-
-w = DEFAULT_WEIGHTS.copy()
-w["viz_or_data_or_ops"] = st.sidebar.slider(
-    "Weight: secondary category",
-    0.0, 0.30, w["viz_or_data_or_ops"], 0.01
-)
-w["tfidf"] = st.sidebar.slider(
-    "Weight: JD ↔ resume similarity (TF-IDF)",
-    0.0, 0.60, w["tfidf"], 0.01
-)
-w["core"] = st.sidebar.slider(
-    "Weight: core skills coverage",
-    0.0, 0.60, w["core"], 0.01
-)
-w["ml"] = st.sidebar.slider(
-    "Weight: advanced/ML coverage",
-    0.0, 0.60, w["ml"], 0.01
-)
-w["impact"] = st.sidebar.slider(
-    "Weight: impact signals (numbers, %)",
-    0.0, 0.30, w["impact"], 0.01
-)
-
-st.sidebar.caption("Weights are normalized automatically.")
-
-st.sidebar.markdown("---")
+# -------------------- SIDEBAR: INPUT --------------------
 st.sidebar.header("Resume input")
 
 input_mode = st.sidebar.radio(
@@ -224,17 +143,17 @@ if input_mode == "Upload file":
     )
 else:
     resume_text = st.sidebar.text_area(
-        "Paste your resume / CV text",
+        "Paste your resume / CV",
         height=260,
-        placeholder="Paste your CV here (can be in any language)..."
+        placeholder="Paste your CV here..."
     )
 
-# -------------------- JOB DESCRIPTION --------------------
-st.subheader("Job Description")
+st.subheader("Job Description / Job Ad")
+job_title = st.text_input("Job title (optional, for context)", placeholder="e.g. Data Scientist, Marketing Specialist, Nurse...")
 jd = st.text_area(
     "Paste the Job Description / Job Ad",
-    height=220,
-    placeholder="Paste responsibilities, requirements, tech stack, soft skills, etc..."
+    height=260,
+    placeholder="Paste responsibilities, requirements, skills, expectations, etc..."
 )
 
 can_analyze = bool(
@@ -243,11 +162,11 @@ can_analyze = bool(
         or (input_mode == "Paste text" and resume_text and resume_text.strip())
     )
 )
-analyze = st.button("Analyze", type="primary", disabled=not can_analyze)
+analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
 
 # -------------------- MAIN LOGIC --------------------
 if analyze:
-    # 1) Read & clean resume
+    # 1) Get resume text
     if input_mode == "Upload file":
         ext = (resume_file.name.split(".")[-1] or "").lower()
         if ext == "pdf":
@@ -260,222 +179,203 @@ if analyze:
     else:
         resume_raw = resume_text
 
-    jd_c = clean(jd)
-    res_c = clean(resume_raw or "")
-
-    if not res_c:
+    if not resume_raw or not resume_raw.strip():
         st.error("Could not read any text from your resume. Try pasting the text instead.")
         st.stop()
 
-    # 2) TF-IDF similarity (content alignment)
-    sim = tfidf_cosine(jd_c, res_c)
+    jd_clean = clean(jd)
+    cv_clean = clean(resume_raw)
 
-    # 3) Skills/taxonomy coverage
-    def get_terms(key):
-        return [t for t in bundle.get(key, [])]
+    # 2) TF-IDF similarity
+    similarity = tfidf_cosine(jd_clean, cv_clean)
 
-    core_terms = get_terms("core")
-    ml_terms = get_terms("ml")
-    sec_terms = (
-        get_terms(secondary_key)
-        or get_terms("viz")
-        or get_terms("data")
-        or get_terms("ops")
-        or []
-    )
+    # 3) Job-ad keywords (generic)
+    jd_tokens = [t for t in tokenize(jd_clean) if len(t) >= 3]
+    top_jd_counts = Counter(jd_tokens)
+    # top keywords from job ad
+    jd_keywords = [term for term, _ in top_jd_counts.most_common(80)]
 
-    core_hits_n, core_hits = count_hits(res_c, core_terms)
-    ml_hits_n, ml_hits = count_hits(res_c, ml_terms)
-    sec_hits_n, sec_hits = count_hits(res_c, sec_terms)
+    # present vs missing keywords
+    _, present_keywords = count_hits(cv_clean, jd_keywords)
+    missing_keywords = unique_missing(jd_keywords, present_keywords)
 
-    # 4) Impact signals (numbers, % changes, metrics verbs)
-    impact_score = min(1.0, find_impact_signals(res_c) / 6.0)  # saturate around ~6 signals
+    # 4) Soft skills coverage (based on job ad)
+    jd_soft = [s for s in SOFT_SKILLS if s in jd_clean]
+    _, present_soft = count_hits(cv_clean, jd_soft)
+    missing_soft = unique_missing(jd_soft, present_soft)
 
-    # 5) Normalize component scores
-    def norm(n_found, n_total):
-        return 0.0 if n_total == 0 else n_found / n_total
+    # 5) Impact signals
+    impact_raw = find_impact_signals(cv_clean)
+    impact_score = min(1.0, impact_raw / 6.0)  # saturate around ~6 signals
 
-    s_core = norm(core_hits_n, len(set(core_terms)))
-    s_ml = norm(ml_hits_n, len(set(ml_terms)))
-    s_sec = norm(sec_hits_n, len(set(sec_terms)))
-    s_tfidf = sim
+    # 6) Normalised component scores
+    def norm_coverage(present: list[str], total: list[str]) -> float:
+        if not total:
+            return 0.0
+        return len(set(present)) / len(set(total))
 
-    # 6) Adjust weights if no taxonomy (Generic / Other)
-    has_taxonomy = (
-        len(core_terms) > 0 or
-        len(ml_terms) > 0 or
-        len(sec_terms) > 0
-    )
-    if not has_taxonomy:
-        # Only similarity + impact matter for generic roles
-        w["core"] = 0.0
-        w["ml"] = 0.0
-        w["viz_or_data_or_ops"] = 0.0
+    s_keywords = norm_coverage(present_keywords, jd_keywords)
+    s_soft = norm_coverage(present_soft, jd_soft)
+    s_similarity = similarity
 
-    # 7) Weighted overall score (normalized weights)
-    wsum = sum(w.values()) or 1.0
+    # 7) Weighted overall score (0–1)
+    w = DEFAULT_WEIGHTS.copy()
+    wsum = sum(w.values())
     weights = {k: v / wsum for k, v in w.items()}
 
     overall = (
-        weights["tfidf"] * s_tfidf +
-        weights["core"] * s_core +
-        weights["ml"] * s_ml +
-        weights["viz_or_data_or_ops"] * s_sec +
-        weights["impact"] * impact_score
+        weights["similarity"]   * s_similarity +
+        weights["keywords"]     * s_keywords +
+        weights["soft_skills"]  * s_soft +
+        weights["impact"]       * impact_score
     )
+    overall_pct = overall * 100
 
-    if not has_taxonomy:
-        st.info(
-            "You selected a generic profile or a role without a preset taxonomy. "
-            "The score is based on job ad similarity + impact signals."
-        )
-
-    # 8) Missing items against JD and against role preset
-    jd_tokens = [t for t in tokenize(jd_c) if len(t) >= 3]
-    top_jd_counts = Counter(jd_tokens)
-    jd_top = [term for term, _ in top_j_counts.most_common(80)]
-    _, present_from_jd = count_hits(res_c, jd_top)
-    missing_vs_jd = unique_missing(jd_top, present_from_jd)[:25]
-
-    missing_core = unique_missing(core_terms, core_hits)[:20]
-    missing_ml = unique_missing(ml_terms, ml_hits)[:20]
-    missing_sec = unique_missing(sec_terms, sec_hits)[:20]
+    # 8) Section detection
+    sections_present = detect_sections(resume_raw)
 
     # -------------------- OUTPUT --------------------
     col1, col2 = st.columns([1.1, 1])
 
     with col1:
-        st.subheader(f"Overall match: **{overall * 100:.1f}%**")
-        st.caption(
-            "Hybrid score using job ad similarity, skill coverage (if available), and impact signals."
-        )
+        title_display = job_title or "this role"
+        st.subheader(f"Match score for **{title_display}**: **{overall_pct:.1f}%**")
 
-        # Short natural-language summary
-        match_label = (
-            "Strong" if overall >= 0.75
-            else "Decent" if overall >= 0.5
-            else "Needs more tailoring"
-        )
-        st.markdown(f"**Overall impression:** {match_label} match for this job ad.")
+        if overall >= 0.75:
+            label = "Strong match"
+        elif overall >= 0.55:
+            label = "Moderate match"
+        else:
+            label = "Needs more tailoring"
 
-        # Score breakdown table
+        st.markdown(f"**ATS-style impression:** {label}")
+
         parts = pd.DataFrame(
             [
-                ["JD ↔ resume similarity (TF-IDF)", f"{s_tfidf * 100:.1f}%", weights["tfidf"]],
-                ["Core skills coverage", f"{s_core * 100:.1f}%", weights["core"]],
-                ["Advanced/ML coverage", f"{s_ml * 100:.1f}%", weights["ml"]],
-                [f"Secondary ({secondary_key})", f"{s_sec * 100:.1f}%", weights["viz_or_data_or_ops"]],
-                ["Impact signals", f"{impact_score * 100:.1f}%", weights["impact"]],
+                ["Similarity (content overlap)",      f"{s_similarity * 100:.1f}%", weights["similarity"]],
+                ["Job-ad keyword coverage",          f"{s_keywords   * 100:.1f}%", weights["keywords"]],
+                ["Soft skills from job ad present",  f"{s_soft       * 100:.1f}%", weights["soft_skills"]],
+                ["Impact signals (numbers, %)",      f"{impact_score * 100:.1f}%", weights["impact"]],
             ],
             columns=["Component", "Score", "Weight (normalized)"]
         )
+        st.markdown("#### Score breakdown")
         st.dataframe(parts, use_container_width=True)
 
-        st.markdown("#### What you already cover (taxonomy terms)")
-        st.write(", ".join(sorted(set(core_hits + ml_hits + sec_hits))) or "—")
+        st.markdown("#### Keywords already in your CV (from the job ad)")
+        st.write(", ".join(sorted(set(present_keywords))) or "—")
 
     with col2:
-        st.markdown("#### Top missing vs this Job Ad")
-        st.write(", ".join(missing_vs_jd) or "—")
+        st.markdown("#### Top missing keywords (from this job ad)")
+        st.write(", ".join(missing_keywords[:30]) or "—")
 
-        st.markdown("#### Missing by category")
-        tabs = st.tabs(["Core", "Advanced/ML", secondary_key.capitalize()])
-        with tabs[0]:
-            st.write(", ".join(missing_core) or "—")
-        with tabs[1]:
-            st.write(", ".join(missing_ml) or "—")
-        with tabs[2]:
-            st.write(", ".join(missing_sec) or "—")
+        if jd_soft:
+            st.markdown("#### Soft skills the job ad mentions")
+            st.write(", ".join(jd_soft))
+            st.markdown("#### Soft skills missing in your CV")
+            st.write(", ".join(missing_soft) or "—")
+
+        st.markdown("#### Basic CV structure check")
+        rows = [
+            ["Experience", "✅" if sections_present["experience"] else "⚠️"],
+            ["Education",  "✅" if sections_present["education"]  else "⚠️"],
+            ["Skills",     "✅" if sections_present["skills"]     else "⚠️"],
+            ["Projects",   "✅" if sections_present["projects"]   else "⚠️"],
+        ]
+        st.table(pd.DataFrame(rows, columns=["Section", "Present?"]))
 
     # -------------------- SUGGESTIONS --------------------
-    st.markdown("### ✅ Suggestions to improve your resume for THIS job")
+    st.markdown("### ✅ Suggestions to improve your score for THIS job")
 
-    sugg = []
+    suggestions = []
 
-    if s_core < 0.7 and len(core_terms) > 0:
-        sugg.append(
-            "Add a **Core Skills** line that mirrors the job ad wording "
-            "(e.g. Python, SQL, statistics, experimentation)."
+    # similarity
+    if s_similarity < 0.6:
+        suggestions.append(
+            "Rewrite your **summary and recent experience** to echo the job ad language "
+            "(use similar phrases for responsibilities, tools and outcomes)."
         )
-    if s_ml < 0.6 and role in ("Data Scientist", "ML Engineer") and len(ml_terms) > 0:
-        sugg.append(
-            "Include **model details** (algorithms, data size, features, evaluation metrics) "
-            "for 2–3 projects that are closest to this job."
+
+    # keywords
+    if s_keywords < 0.7 and missing_keywords:
+        suggestions.append(
+            "Add some of the **most important missing keywords** (if they are true for you), "
+            "especially in your summary and in the top 1–2 roles: "
+            + ", ".join(missing_keywords[:10])
         )
+
+    # soft skills
+    if jd_soft and s_soft < 0.7:
+        suggestions.append(
+            "The job ad values certain **soft skills**. Add bullet points that *show* these skills in action "
+            f"(e.g. situations where you used {', '.join(missing_soft[:5])})."
+        )
+
+    # impact
     if impact_score < 0.5:
-        sugg.append(
-            "Quantify **impact** with numbers (e.g. *+9% AUC, −30% latency, +€120k revenue, −15% cost*)."
-        )
-    if "sql" in jd_c and "sql" not in res_c:
-        sugg.append(
-            "Add a bullet about **SQL** if true (complex joins, CTEs, window functions, query performance)."
-        )
-    if role == "Data Scientist" and ("ab testing" in jd_c or "experiment" in jd_c) and "ab" not in res_c:
-        sugg.append(
-            "Include an **A/B testing** bullet (design, sample size, power, statistical tests)."
-        )
-    if role == "ML Engineer" and "mlops" in jd_c and "mlops" not in res_c:
-        sugg.append(
-            "Add an **MLOps** bullet (pipelines, model registry, CI/CD, monitoring in production)."
-        )
-    if role == "Data Engineer" and "dbt" in jd_c and "dbt" not in res_c:
-        sugg.append(
-            "Mention **dbt** models/tests and orchestration (e.g. Airflow)."
+        suggestions.append(
+            "Add **numbers** to your bullets where possible: percentages, money saved/earned, time saved, "
+            "customers served, etc. (e.g. *\"Increased conversion by 12%\"*, *\"Reduced processing time by 30%\"*)."
         )
 
-    # Pull 8 most important JD terms missing
-    if missing_vs_jd:
-        sugg.append(
-            "Weave in missing job ad terms where truthful, especially in your summary and recent roles: "
-            + ", ".join(missing_vs_jd[:10])
+    # structure
+    if not sections_present["experience"]:
+        suggestions.append(
+            "Add an **Experience** section with clear job titles, company names, dates, and bullet points."
+        )
+    if not sections_present["education"]:
+        suggestions.append(
+            "Add an **Education** section with your degree(s), institution(s), and graduation year(s)."
+        )
+    if not sections_present["skills"]:
+        suggestions.append(
+            "Add a **Skills** section with relevant tools, technologies and soft skills mentioned in the job ad."
+        )
+    if not sections_present["projects"]:
+        suggestions.append(
+            "Consider adding a **Projects** section for relevant academic, personal, or freelance work."
         )
 
-    if sugg:
-        for s in sugg:
-            st.write(f"- {s}")
-    else:
-        st.write(
-            "- This is already a strong match. Focus on phrasing bullets to echo the job ad wording."
+    if not suggestions:
+        suggestions.append(
+            "Your CV is already well aligned. Fine-tune wording to mirror the job ad and keep everything "
+            "focused on impact and relevance to this specific role."
         )
 
-    # -------------------- AUTO BULLET GENERATOR --------------------
-    st.markdown("### ✍️ Draft resume bullets (edit & copy)")
+    for s in suggestions:
+        st.write(f"- {s}")
 
-    def bullet(role: str, term: str) -> str:
-        return {
-            "Generic / Other": f"Delivered results around **{term}**, demonstrating ownership, collaboration, and measurable impact (e.g. X% improvement / Y cost reduction).",
-            "Data Scientist": f"Built and shipped **{term}** model(s) on real data, improving key metric by X% (A/B tested; n≈N; 95% CI).",
-            "ML Engineer":    f"Productionized **{term}** with APIs and CI/CD; cut p95 latency by X% and reduced infra cost by Y%.",
-            "Data Engineer":  f"Modeled **{term}** in a warehouse/lakehouse; automated ingestion with orchestration and improved data freshness to <15 min.",
-            "Data Analyst":   f"Delivered **{term}** dashboard/analysis tracking KPIs; drove +X% uplift via insights and experiments.",
-        }.get(role, f"Delivered impact using **{term}**, with clear metrics and ownership.")
+    # -------------------- BULLET GENERATOR --------------------
+    st.markdown("### ✍️ Draft bullet ideas (you can copy & edit)")
 
-    picks = (missing_ml or missing_core or missing_sec)[:5]
-    if not picks:
-        if role == "Data Scientist":
-            picks = ["classification", "xgboost", "shap", "sql", "power bi"]
-        elif role == "ML Engineer":
-            picks = ["mlops", "pytorch", "inference", "monitoring", "docker"]
-        elif role == "Data Engineer":
-            picks = ["dbt", "spark", "airflow", "data quality", "etl"]
-        elif role == "Data Analyst":
-            picks = ["dashboard", "kpi", "cohort", "segmentation", "sql"]
-        else:
-            picks = ["stakeholder management", "ownership", "delivery", "communication", "impact"]
+    # pick keywords for bullets
+    bullet_terms = missing_keywords[:5] or present_keywords[:5]
 
-    text = "\n".join([f"• {bullet(role, t)}" for t in picks])
-    st.text_area("Draft bullets:", value=text, height=180)
+    bullet_examples = []
+    for term in bullet_terms:
+        bullet_examples.append(
+            f"• Achieved [RESULT] related to **{term}** by [what you did], which led to [number/impact]."
+        )
+
+    if impact_score < 0.5:
+        bullet_examples.append(
+            "• Improved [metric] by [X%/amount] through [your action], demonstrating clear measurable impact."
+        )
+
+    st.text_area(
+        "Bullet examples:",
+        value="\n".join(bullet_examples),
+        height=200
+    )
 
     # -------------------- EXPORTS --------------------
     st.markdown("### ⬇️ Export")
 
-    # CSV of missing terms
     missing_df = pd.DataFrame({
-        "missing_vs_jd": pd.Series(missing_vs_jd),
-        "missing_core": pd.Series(missing_core),
-        "missing_ml": pd.Series(missing_ml),
-        f"missing_{secondary_key}": pd.Series(missing_sec),
+        "missing_keywords": pd.Series(missing_keywords),
+        "missing_soft_skills": pd.Series(missing_soft),
     })
+
     st.download_button(
         "Download missing keywords (CSV)",
         data=missing_df.to_csv(index=False),
@@ -483,30 +383,32 @@ if analyze:
         mime="text/csv"
     )
 
-    # JSON report
     report = {
-        "role": role,
-        "overall": round(overall, 4),
+        "job_title": job_title,
+        "overall_score": round(overall, 4),
         "components": {
-            "tfidf": s_tfidf,
-            "core": s_core,
-            "ml": s_ml,
-            secondary_key: s_sec,
+            "similarity": s_similarity,
+            "keywords": s_keywords,
+            "soft_skills": s_soft,
             "impact": impact_score,
         },
-        "present": sorted(set(core_hits + ml_hits + sec_hits)),
-        "missing": {
-            "vs_jd": missing_vs_jd,
-            "core": missing_core,
-            "ml": missing_ml,
-            secondary_key: missing_sec,
+        "keywords": {
+            "present": sorted(set(present_keywords)),
+            "missing": missing_keywords,
         },
-        "suggestions": sugg,
+        "soft_skills": {
+            "required": jd_soft,
+            "present": present_soft,
+            "missing": missing_soft,
+        },
+        "sections_present": sections_present,
+        "suggestions": suggestions,
     }
+
     st.download_button(
         "Download JSON report",
         data=json.dumps(report, indent=2),
-        file_name="report.json",
+        file_name="ats_report.json",
         mime="application/json"
     )
 
