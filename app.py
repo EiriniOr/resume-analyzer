@@ -161,10 +161,10 @@ st.sidebar.markdown(
         font-size: 0.85rem;
     ">
       <strong>About this app</strong><br><br>
-      • Upload your resume and paste any job ad<br>
+      • Upload your CV and paste the job ad<br>
       • Get an ATS-style match score<br>
-      • See missing keywords and suggestions<br>
-      • Improve your CV for that specific role
+      • See missing keywords and receive suggestions<br>
+      • Improve your ATS-style compatibility for that specific role
     </div>
     """,
     unsafe_allow_html=True,
