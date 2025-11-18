@@ -421,12 +421,12 @@ if analyze:
         "missing_soft_skills": pd.Series(missing_soft),
     })
 
-    st.download_button(
-        "Download missing keywords (CSV)",
-        data=missing_df.to_csv(index=False),
-        file_name="missing_keywords.csv",
-        mime="text/csv"
-    )
+    # st.download_button(
+    #     "Download missing keywords (CSV)",
+    #     data=missing_df.to_csv(index=False),
+    #     file_name="missing_keywords.csv",
+    #     mime="text/csv"
+    # )
 
     report = {
         "job_title": job_title,
