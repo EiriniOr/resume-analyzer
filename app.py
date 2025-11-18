@@ -181,6 +181,7 @@ LANGUAGE = st.sidebar.selectbox(
 
 st.sidebar.header("CV input")
 input_mode = st.sidebar.radio(
+
     ["Upload file", "Paste text"],
     index=0
 )
