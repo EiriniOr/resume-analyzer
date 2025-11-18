@@ -174,7 +174,7 @@ st.sidebar.markdown(
 st.sidebar.header("Language")
 
 LANGUAGE = st.sidebar.selectbox(
-    "Language of job ad & CV",
+    "Choose the language of the ad & CV",
     ["English", "Swedish"],
     index=0
 )
