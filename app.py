@@ -181,10 +181,12 @@ LANGUAGE = st.sidebar.selectbox(
 
 st.sidebar.header("CV input")
 input_mode = st.sidebar.radio(
-    "How do you want to provide your CV?",
+    "CV input mode",                  # not shown
     ["Upload file", "Paste text"],
-    index=0
+    index=0,
+    label_visibility="collapsed",
 )
+
 
 
 resume_file = None
