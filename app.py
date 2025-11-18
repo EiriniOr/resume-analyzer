@@ -204,10 +204,10 @@ else:
         placeholder="Paste your CV here..."
     )
 
-st.subheader("Job Description / Job Ad")
+st.subheader("Job Ad")
 job_title = st.text_input("Job title (optional, for context)", placeholder="e.g. Data Scientist, Marketing Specialist, Nurse...")
 jd = st.text_area(
-    "Paste the Job Description / Job Ad",
+    "Paste the Job Description",
     height=260,
     placeholder="Paste responsibilities, requirements, skills, expectations, etc..."
 )
