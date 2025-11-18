@@ -300,12 +300,15 @@ if analyze:
         title_display = job_title or "this role"
         st.subheader(f"Match score for **{title_display}**: **{overall_pct:.1f}%**")
 
-        if overall >= 0.75:
+        if overall >= 0.70:
             label = "Strong match"
-        elif overall >= 0.55:
+            color = "#22c55e"
+        elif overall >= 0.50:
             label = "Moderate match"
+            color = "#a3e635"
         else:
-            label = "Needs more tailoring"
+            label = "Needs improvement, follow suggestions"
+            color = "#f97316"
 
         st.markdown(f"**ATS-style impression:** {label}")
 
@@ -478,7 +481,7 @@ st.markdown(
     """
     <hr style="margin-top: 2rem; margin-bottom: 0.5rem;">
     <div style="font-size: 0.85rem; color: #64748b; text-align: center;">
-      Built by <strong>Eirini Ornithopoulou</strong> ·
+      Built by <strong>Eirini Ornithopoulou (2025)</strong> ·
       <a href="https://eirini-portfolio-aer3.vercel.app/" target="_blank">
         Visit my portfolio
       </a>
