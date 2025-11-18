@@ -25,7 +25,7 @@ st.set_page_config(
 
 st.title("ATS-style CV and Job Ad Match Estimation")
 st.caption(
-    "Compare your CV to any job ad. Get an ATS-style match score plus practical suggestions to improve your chances for this role."
+    "Compare your CV to any job ad. Get an ATS-style match score plus practical suggestions to improve your chances for the role."
 )
 
 # -------------------- CONFIG / CONSTANTS --------------------
@@ -236,7 +236,7 @@ if analyze:
         resume_raw = resume_text
 
     if not resume_raw or not resume_raw.strip():
-        st.error("Could not read any text from your resume. Try pasting the text instead.")
+        st.error("Could not read any text from your CV. Try pasting the text instead.")
         st.stop()
 
     jd_clean = clean(jd)
