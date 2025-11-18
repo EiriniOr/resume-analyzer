@@ -423,7 +423,7 @@ if analyze:
         st.write(f"- {s}")
 
     # -------------------- BULLET GENERATOR --------------------
-    st.markdown("### ✍️ Draft bullet ideas (you can copy & edit)")
+    st.markdown("### Draft bullet ideas")
 
     # pick keywords for bullets
     bullet_terms = missing_keywords[:5] or present_keywords[:5]
@@ -489,8 +489,8 @@ if analyze:
         mime="application/json"
     )
 
-    with st.expander("View extracted resume text (debug)"):
-        st.write(resume_raw[:6000])
+    # with st.expander("View extracted resume text (debug)"):
+    #     st.write(resume_raw[:6000])
 
 st.markdown(
     """
