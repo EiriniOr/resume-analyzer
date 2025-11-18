@@ -125,13 +125,21 @@ def detect_sections(text: str) -> dict:
     return present
 
 # -------------------- SIDEBAR: INPUT --------------------
-st.sidebar.header("Resume input")
+st.sidebar.header("About this app")
+st.sidebar.info(
+    "Upload your resume and paste any job ad.\n\n"
+    "The app calculates an ATS-style match score, "
+    "highlights missing keywords, and gives suggestions "
+    "to improve your CV for that specific role."
+)
 
+st.sidebar.header("Resume input")
 input_mode = st.sidebar.radio(
     "How do you want to provide your resume?",
     ["Upload file", "Paste text"],
     index=0
 )
+
 
 resume_file = None
 resume_text = None
