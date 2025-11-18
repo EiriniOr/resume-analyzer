@@ -473,3 +473,16 @@ if analyze:
 
     with st.expander("View extracted resume text (debug)"):
         st.write(resume_raw[:6000])
+
+st.markdown(
+    """
+    <hr style="margin-top: 2rem; margin-bottom: 0.5rem;">
+    <div style="font-size: 0.85rem; color: #64748b; text-align: center;">
+      Built by <strong>Eirini Ornithopoulou</strong> ·
+      <a href="https://eirini-portfolio-aer3.vercel.app/" target="_blank">
+        Visit my portfolio
+      </a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
