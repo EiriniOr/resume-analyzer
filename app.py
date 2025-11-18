@@ -153,18 +153,23 @@ def detect_sections(text: str) -> dict:
 # -------------------- SIDEBAR: INPUT --------------------
 st.sidebar.markdown(
     """
-    **About this app**
-
-    <small>
-    • Upload your CV and paste the job ad<br>
-    • Get an ATS-style match score<br>
-    • See missing keywords and practical suggestions<br>
-    • Improve your chance to be selected for that specific role
-    • (Optional) Use the json provided with LLMs like ChatGPT to integrate missing words into your current CV.
-    </small>
+    <div style="
+        border-left: 4px solid #1f6feb;
+        background-color: rgba(15, 23, 42, 0.25);
+        padding: 0.6rem 0.8rem;
+        border-radius: 0.5rem;
+        font-size: 0.85rem;
+    ">
+      <strong>About this app</strong><br><br>
+      • Upload your resume and paste any job ad<br>
+      • Get an ATS-style match score<br>
+      • See missing keywords and suggestions<br>
+      • Improve your CV for that specific role
+    </div>
     """,
     unsafe_allow_html=True,
 )
+
 
 st.sidebar.header("Language")
 
