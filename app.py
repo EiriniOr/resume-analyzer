@@ -2,6 +2,7 @@ import io
 import re
 import json
 from collections import Counter
+import re
 
 import streamlit as st
 import pandas as pd
@@ -18,21 +19,46 @@ except Exception:
 
 # -------------------- UI CONFIG --------------------
 st.set_page_config(
-    page_title="ATS-style Resume Job Ad Matcher",
+    page_title="ATS-style CV and Job Ad Matcher",
     layout="wide"
 )
 
-st.title("ATS-style Resume ↔ Job Ad Matcher")
+st.title("ATS-style CV and Job Ad Matcher")
 st.caption(
-    "Compare any resume to any job ad. Get a match score plus suggestions to improve your CV for this role."
+    "Compare any resume to any job ad. Get an ATS-style match score plus suggestions to improve your CV for this role."
 )
 
 # -------------------- CONFIG / CONSTANTS --------------------
-STOP = {
+STOP_EN = {
     "and","the","for","with","you","are","to","of","in","on","a","an","by","at",
     "as","or","vs","be","is","was","were","from","that","this","it","your","our",
     "we","they","their","them","his","her","its","will","can","may","might"
 }
+
+STOP_SV = {
+    "och","att","som","det","detta","den","en","ett","i","på","för","till",
+    "med","från","är","var","om","inte","har","hade","vi","de","deras","man"
+}
+
+SOFT_SKILLS = {
+    "English": {
+        "communication","teamwork","collaboration","leadership","problem solving",
+        "critical thinking","adaptability","flexibility","time management",
+        "organisation","organization","stakeholder management","ownership",
+        "initiative","creativity","empathy","customer focus","detail oriented",
+        "self-motivated","proactive","analytical","negotiation","presentation"
+    },
+    "Swedish": {
+        "kommunikation","samarbete","lagarbete","ledarskap","problemlösning",
+        "kritiskt tänkande","anpassningsförmåga","flexibilitet","tidsplanering",
+        "struktur","självständighet","initiativförmåga","kundfokus",
+        "analytisk","noggrann","kommunikativ"
+    }
+}
+
+def get_stopwords(language: str):
+    return STOP_EN if language == "English" else STOP_SV
+
 
 IMPACT_PATTERNS = [
     r"\b\d{1,3}%\b",                      # percentages
@@ -40,14 +66,6 @@ IMPACT_PATTERNS = [
     r"\b(?:reduced|improved|increased|decreased|cut|boosted|saved|grew)\b",
     r"\b(?:revenue|cost|profit|latency|throughput|accuracy|conversion|kpi|sales)\b",
 ]
-
-SOFT_SKILLS = {
-    "communication","teamwork","collaboration","leadership","problem solving",
-    "critical thinking","adaptability","flexibility","time management",
-    "organisation","organization","stakeholder management","ownership",
-    "initiative","creativity","empathy","customer focus","detail oriented",
-    "self-motivated","proactive","analytical","negotiation","presentation"
-}
 
 SECTION_HINTS = {
     "experience": ["experience","work history","professional experience","employment"],
@@ -79,20 +97,28 @@ def clean(text: str) -> str:
     if not text:
         return ""
     text = text.lower()
-    text = re.sub(r"[^a-z0-9+#.\-_/()%\s]", " ", text)
+    # keep unicode word chars (åäö etc.) + some punctuation
+    text = re.sub(r"[^\w+#.\-_/()%\s]", " ", text, flags=re.UNICODE)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-def tokenize(text: str):
+def tokenize(text: str, language: str):
     if not text:
         return []
+    stop = get_stopwords(language)
     return [
-        w for w in re.findall(r"[a-z0-9+#.\-_/()%]{2,}", text.lower())
-        if w not in STOP
+        w for w in re.findall(r"[\w#+.\-_/()%]{2,}", text.lower(), flags=re.UNICODE)
+        if w not in stop
     ]
 
-def tfidf_cosine(a: str, b: str) -> float:
-    vec = TfidfVectorizer(ngram_range=(1, 2), min_df=1, stop_words="english")
+
+def tfidf_cosine(a: str, b: str, language: str) -> float:
+    stop_words = "english" if language == "English" else None
+    vec = TfidfVectorizer(
+        ngram_range=(1, 2),
+        min_df=1,
+        stop_words=stop_words,
+    )
     X = vec.fit_transform([a, b])
     return float(cosine_similarity(X[0], X[1])[0, 0])
 
@@ -125,12 +151,20 @@ def detect_sections(text: str) -> dict:
     return present
 
 # -------------------- SIDEBAR: INPUT --------------------
-st.sidebar.header("About this app")
+st.sidebar.header("About this App")
 st.sidebar.info(
     "Upload your resume and paste any job ad.\n\n"
     "The app calculates an ATS-style match score, "
     "highlights missing keywords, and gives suggestions "
     "to improve your CV for that specific role."
+)
+
+st.sidebar.header("Language")
+
+LANGUAGE = st.sidebar.selectbox(
+    "Language of job ad & CV",
+    ["English", "Swedish"],
+    index=0
 )
 
 st.sidebar.header("Resume input")
@@ -195,10 +229,11 @@ if analyze:
     cv_clean = clean(resume_raw)
 
     # 2) TF-IDF similarity
-    similarity = tfidf_cosine(jd_clean, cv_clean)
+    similarity = tfidf_cosine(jd_clean, cv_clean, LANGUAGE)
+
 
     # 3) Job-ad keywords (generic)
-    jd_tokens = [t for t in tokenize(jd_clean) if len(t) >= 3]
+    jd_tokens = [t for t in tokenize(jd_clean, LANGUAGE) if len(t) >= 3]
     top_jd_counts = Counter(jd_tokens)
     # top keywords from job ad
     jd_keywords = [term for term, _ in top_jd_counts.most_common(80)]
@@ -208,9 +243,11 @@ if analyze:
     missing_keywords = unique_missing(jd_keywords, present_keywords)
 
     # 4) Soft skills coverage (based on job ad)
-    jd_soft = [s for s in SOFT_SKILLS if s in jd_clean]
+    jd_soft_vocab = SOFT_SKILLS[LANGUAGE]
+    jd_soft = [s for s in jd_soft_vocab if s in jd_clean]
     _, present_soft = count_hits(cv_clean, jd_soft)
     missing_soft = unique_missing(jd_soft, present_soft)
+
 
     # 5) Impact signals
     impact_raw = find_impact_signals(cv_clean)
