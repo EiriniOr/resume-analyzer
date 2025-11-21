@@ -378,46 +378,6 @@ if analyze:
     for s in suggestions:
         st.write(f"- {s}")
 
-    # -------------------- EXPORTS --------------------
-    st.markdown("### ⬇️ Export")
-
-    missing_df = pd.DataFrame({
-        "missing_keywords": pd.Series(missing_keywords),
-        "missing_soft_skills": pd.Series(missing_soft),
-    })
-
-    report = {
-        "job_title": job_title,
-        "overall_score": round(overall, 4),
-        "components": {
-            "similarity": s_similarity,
-            "keywords": s_keywords,
-            "soft_skills": s_soft,
-            "impact": impact_score,
-        },
-        "keywords": {
-            "present": sorted(set(present_keywords)),
-            "missing": missing_keywords,
-        },
-        "soft_skills": {
-            "required": jd_soft,
-            "present": present_soft,
-            "missing": missing_soft,
-        },
-        "sections_present": sections_present,
-        "suggestions": suggestions,
-    }
-
-    st.download_button(
-        "Download JSON report",
-        data=json.dumps(report, indent=2),
-        file_name="ats_report.json",
-        mime="application/json"
-    )
-
-    # with st.expander("View extracted resume text (debug)"):
-    #     st.write(resume_raw[:6000])
-
 st.markdown(
     """
     <hr style="margin-top: 2rem; margin-bottom: 0.5rem;">
