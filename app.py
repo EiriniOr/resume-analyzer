@@ -25,7 +25,7 @@ st.set_page_config(
 
 st.title("ATS-style job ad matching")
 st.caption(
-    "Get an ATS-style match score plus practical suggestions to improve your chances for the role."
+    "How high would you relatively score if you applied for an advertised position? Disclaimer, this is an estimation and a real Applicant Tracking System may differ."
 )
 
 # -------------------- CONFIG / CONSTANTS --------------------
@@ -78,22 +78,107 @@ STOP_SV = {
     "alla","varje","någon","något","några","samma","annan","andra","kanske"
 }
 
-
 SOFT_SKILLS = {
     "English": {
-        "communication","teamwork","collaboration","leadership","problem solving",
-        "critical thinking","adaptability","flexibility","time management",
-        "organisation","organization","stakeholder management","ownership",
-        "initiative","creativity","empathy","customer focus","detail oriented",
-        "self-motivated","proactive","analytical","negotiation","presentation"
+        # existing
+        "communication", "teamwork", "collaboration", "leadership", "problem solving",
+        "critical thinking", "adaptability", "flexibility", "time management",
+        "organisation", "organization", "stakeholder management", "ownership",
+        "initiative", "creativity", "empathy", "customer focus", "detail oriented",
+        "detail-oriented", "self-motivated", "proactive", "analytical",
+        "negotiation", "presentation",
+
+        # more communication / collaboration
+        "communication skills", "strong communication skills",
+        "interpersonal skills", "relationship building",
+        "cross-functional collaboration", "cross functional collaboration",
+        "stakeholder communication", "stakeholder engagement",
+        "team player", "supportive",
+
+        # thinking / analysis / strategy
+        "analytical thinking", "strategic thinking", "conceptual thinking",
+        "problem-solving skills", "data-driven mindset", "data driven mindset",
+        "decision making", "decision-making",
+
+        # ownership / drive
+        "accountability", "sense of ownership", "end-to-end ownership",
+        "self-driven", "self driven", "autonomous", "independent",
+        "self starter", "self-starter",
+
+        # planning / structure
+        "planning", "prioritisation", "prioritization",
+        "multitasking", "attention to detail", "organized", "organised",
+
+        # customer / user orientation
+        "customer-centric", "customer centric",
+        "user-centric", "user centric",
+        "service minded", "service-minded",
+
+        # influence / facilitation
+        "influencing", "influence skills",
+        "conflict resolution", "mediation",
+        "facilitation", "workshop facilitation",
+        "coaching", "mentoring",
+
+        # results / solutions / mindset
+        "result oriented", "result-oriented",
+        "outcome driven", "outcome-driven",
+        "solution oriented", "solution-oriented",
+        "growth mindset", "continuous improvement",
+        "learning mindset", "curiosity", "open-minded",
+
+        # resilience / change
+        "resilience", "stress tolerance",
+        "change readiness", "change oriented", "change-oriented"
     },
+
     "Swedish": {
-        "kommunikation","samarbete","lagarbete","ledarskap","problemlösning",
-        "kritiskt tänkande","anpassningsförmåga","flexibilitet","tidsplanering",
-        "struktur","självständighet","initiativförmåga","kundfokus",
-        "analytisk","noggrann","kommunikativ"
+        # existing
+        "kommunikation", "samarbete", "lagarbete", "ledarskap", "problemlösning",
+        "kritiskt tänkande", "anpassningsförmåga", "flexibilitet", "tidsplanering",
+        "struktur", "självständighet", "initiativförmåga", "kundfokus",
+        "analytisk", "noggrann", "kommunikativ",
+
+        # kommunikation / relationer
+        "kommunikationsförmåga", "stark kommunikationsförmåga",
+        "interpersonella färdigheter", "relationsskapande", "relationsbyggande",
+        "teamkänsla", "lagspelare",
+
+        # analys / strategi
+        "analytiskt tänkande", "strategiskt tänkande",
+        "problemlösningsförmåga", "dataorienterad", "dataorienterat arbetssätt",
+
+        # ägarskap / ansvar / driv
+        "ansvarstagande", "eget ansvar", "ägarskap",
+        "självständig", "driv", "driven", "engagerad",
+        "initiativrik", "högt engagemang",
+
+        # struktur / planering
+        "strukturerad", "planeringsförmåga", "prioriteringsförmåga",
+        "förmåga att hantera flera uppgifter", "förmåga att hålla deadlines",
+
+        # kund / användare
+        "kundorienterad", "kundinriktad",
+        "serviceinriktad", "serviceorienterad",
+        "användarfokus", "användarcentrerad",
+
+        # påverkan / facilitering
+        "påverkansförmåga", "förhandlingsförmåga",
+        "konflikthantering", "facilitering", "workshopledare",
+        "coachande", "coachande ledarskap", "handledning",
+
+        # resultat / lösningar / kvalitet
+        "lösningsorienterad",
+        "resultatorienterad", "resultatinriktad", "målinriktad",
+        "kvalitetsmedveten", "hög kvalitet", "noggrannhet",
+
+        # personlig stil / mindset
+        "lyhörd", "ödmjuk", "pedagogisk", "pedagogisk förmåga",
+        "flexibel", "förändringsbenägen", "förändringsvillig",
+        "lärande mindset", "nyfiken"
     }
 }
+
 
 
 def get_stopwords(language: str):
@@ -135,6 +220,44 @@ def clean(text: str) -> str:
     text = re.sub(r"[^\w+#.\-_/()%\s]", " ", text, flags=re.UNICODE)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+def normalize_for_match(word: str, language: str) -> str:
+    """
+    Very lightweight 'stemming' so that singular/plural forms
+    are treated as the same for matching/coverage.
+    """
+    w = word.lower()
+
+    if language == "English":
+        # e.g. 'companies' -> 'company'
+        if w.endswith("ies") and len(w) > 4:
+            return w[:-3] + "y"
+
+        # e.g. 'processes' -> 'process'
+        if w.endswith("ses") and len(w) > 4:
+            return w[:-2]
+
+        # generic plural: 'models' -> 'model', but keep 'class', 'process'
+        if w.endswith("s") and not w.endswith("ss") and len(w) > 3:
+            return w[:-1]
+
+        return w
+
+    # Swedish – very rough, but good enough for 'system'/'systemen' etc.
+    else:
+        # longest suffixes first
+        suffixes = [
+            "arna", "erna", "orna",       # t.ex. systemen -> system, kurserna -> kurs
+            "ande", "ende",
+            "heten", "heter", "het",
+            "na", "en", "et",
+            "ar", "er", "or", "n",
+        ]
+        for suf in suffixes:
+            if w.endswith(suf) and len(w) > len(suf) + 1:
+                return w[:-len(suf)]
+        return w
+
 
 def tokenize(text: str, language: str):
     if not text:
@@ -203,11 +326,11 @@ st.sidebar.markdown(
         border-radius: 0.5rem;
         font-size: 0.85rem;
     ">
-      <strong>About this app</strong><br><br>
+      <strong>Instructions</strong><br><br>
       • Upload your CV and paste the job ad<br>
       • Get an ATS-style match score<br>
       • See missing keywords and receive suggestions<br>
-      • Weave the missing keywords yourself, or via an LLM and improve your ATS-style compatibility for that specific role
+      • Weave the missing keywords/skills into your CV yourself, or via an LLM and improve your ATS-style compatibility for that specific role
     </div>
     """,
     unsafe_allow_html=True,
@@ -245,7 +368,7 @@ else:
         placeholder="Paste your CV here..."
     )
 
-st.subheader("Job Ad")
+st.subheader("Insert the job advertisement information:")
 job_title = st.text_input("Job title (optional, for context)", placeholder="e.g. Data Scientist, Marketing Specialist, Nurse...")
 jd = st.text_area(
     "Paste the Job Description",
@@ -290,8 +413,20 @@ if analyze:
     # 3) Job-ad keywords (generic)
     jd_tokens = [t for t in tokenize(jd_clean, LANGUAGE) if len(t) >= 3]
     top_jd_counts = Counter(jd_tokens)
-    # top keywords from job ad
     jd_keywords = [term for term, _ in top_jd_counts.most_common(80)]
+
+    # --- plural-insensitive keyword coverage ---
+    cv_tokens = tokenize(cv_clean, LANGUAGE)
+
+    def normalize_list(words: list[str]) -> list[str]:
+        return [normalize_for_match(w, LANGUAGE) for w in words if w]
+
+    jd_keywords_norm = normalize_list(jd_keywords)
+    cv_norm_set = {normalize_for_match(w, LANGUAGE) for w in cv_tokens}
+
+    present_keywords_norm = sorted({w for w in jd_keywords_norm if w in cv_norm_set})
+    missing_keywords_norm = unique_missing(jd_keywords_norm, present_keywords_norm)
+
 
     # present vs missing keywords
     _, present_keywords = count_hits(cv_clean, jd_keywords)
@@ -314,7 +449,8 @@ if analyze:
             return 0.0
         return len(set(present)) / len(set(total))
 
-    s_keywords = norm_coverage(present_keywords, jd_keywords)
+    s_keywords = norm_coverage(present_keywords_norm, jd_keywords_norm)
+
     s_soft = norm_coverage(present_soft, jd_soft)
     s_similarity = similarity
 
@@ -381,10 +517,10 @@ if analyze:
     st.markdown("## 3. Keyword coverage")
 
     st.markdown("#### 3.1 Keywords already in your CV (from the job ad)")
-    st.write(", ".join(sorted(set(present_keywords))) or "—")
+    st.write(", ".join(sorted(set(present_keywords_norm))) or "—")
 
     st.markdown("#### 3.2 Top missing keywords (from this job ad)")
-    st.write(", ".join(missing_keywords[:30]) or "—")
+    st.write(", ".join(missing_keywords_norm[:30]) or "—")
 
     # ----- 4. Soft skills -----
     if jd_soft:
