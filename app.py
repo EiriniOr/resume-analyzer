@@ -30,15 +30,54 @@ st.caption(
 
 # -------------------- CONFIG / CONSTANTS --------------------
 STOP_EN = {
-    "and","the","for","with","you","are","to","of","in","on","a","an","by","at",
-    "as","or","vs","be","is","was","were","from","that","this","it","your","our",
-    "we","they","their","them","his","her","its","will","can","may","might"
+    # articles, pronouns, auxiliaries
+    "a","an","the","and","or","but","if","then","than","so","because",
+    "i","you","he","she","it","we","they","me","him","her","us","them",
+    "my","your","yours","our","ours","their","theirs","his","hers","its",
+    "this","that","these","those","there","here","where","when","why","how",
+    "any","some","no","not","only","just","very",
+
+    # common verbs/aux
+    "am","is","are","was","were","be","been","being",
+    "have","has","had","having","do","does","did","doing",
+    "will","would","shall","should","can","could","may","might","must",
+
+    # prepositions / linkers
+    "to","of","in","on","at","by","for","from","with","about","into","over",
+    "under","between","through","during","before","after","up","down","out",
+    "off","across","within","without",
+
+    # misc
+    "as","such","also","again","more","most","many","much","few","each",
+    "other","another","same","own","too"
 }
 
 STOP_SV = {
-    "och","att","som","det","detta","den","en","ett","i","på","för","till",
-    "med","från","är","var","om","inte","har","hade","vi","de","deras","man"
+    # artiklar, pronomen
+    "en","ett","den","det","de","dom","jag","du","han","hon","vi","ni",
+    "mig","dig","honom","henne","oss","er","dem",
+    "min","mitt","mina","din","ditt","dina","sin","sitt","sina","vår","vårt",
+    "våra","er","ert","era","deras",
+    "denna","detta","dessa","här","där","sådan","sådant","sådana",
+
+    # vanliga verb/hjälpverb
+    "är","var","vara","blir","blev","bli",
+    "har","hade","haft","ha",
+    "gör","gjorde","göra",
+    "kan","kunde","ska","skall","skulle","får","fick","måste","bör","borde",
+
+    # bindeord / prepositioner
+    "och","eller","men","utan","fast","för",
+    "att","som","om","när","medan","innan","efter","eftersom",
+    "i","på","för","till","från","med","utan","över","under","mellan",
+    "genom","hos","inom","utanför","innan","efter","under",
+    "inte","ingen","inget","inga",
+
+    # övrigt
+    "också","så","då","också","redan","bara","mycket","många","få","några",
+    "alla","varje","någon","något","några","samma","annan","andra","kanske"
 }
+
 
 SOFT_SKILLS = {
     "English": {
@@ -56,8 +95,10 @@ SOFT_SKILLS = {
     }
 }
 
+
 def get_stopwords(language: str):
     return STOP_EN if language == "English" else STOP_SV
+
 
 
 IMPACT_PATTERNS = [
@@ -99,10 +140,19 @@ def tokenize(text: str, language: str):
     if not text:
         return []
     stop = get_stopwords(language)
-    return [
-        w for w in re.findall(r"[\w#+.\-_/()%]{2,}", text.lower(), flags=re.UNICODE)
-        if w not in stop
-    ]
+
+    # Remove common punctuation so "word." / "word," / "\"word\"" → "word"
+    # (but keep +, #, %, _, /, (), etc. for tech terms)
+    text = re.sub(r"[.,;:!?\"“”‘’]", " ", text)
+
+    # Build tokens without dots so we don't get "word."
+    raw_tokens = re.findall(
+        r"[\w#+\-_/()%]{2,}",  # note: '.' removed here
+        text.lower(),
+        flags=re.UNICODE,
+    )
+
+    return [w for w in raw_tokens if w not in stop]
 
 
 def tfidf_cosine(a: str, b: str, language: str) -> float:
@@ -282,63 +332,70 @@ if analyze:
     overall_pct = overall * 100
 
     # -------------------- OUTPUT --------------------
-    col1, col2 = st.columns([1.1, 1])
+    title_display = job_title or "this role"
 
-    with col1:
-        title_display = job_title or "this role"
+    # Decide label + color based on score
+    if overall >= 0.70:
+        label = "Strong match"
+        color = "#22c55e"   # green
+    elif overall >= 0.50:
+        label = "Good match"
+        color = "#a3e635"   # yellow-green
+    else:
+        label = "Needs improvement, follow suggestions!"
+        color = "#f97316"   # orange / red
 
-        # Decide label + color based on score
-        if overall >= 0.70:
-            label = "Strong match"
-            color = "#22c55e"   # green
-        elif overall >= 0.50:
-            label = "Good match"
-            color = "#a3e635"   # yellow-green
-        else:
-            label = "Needs improvement, follow suggestions!"
-            color = "#f97316"   # orange / red
+    # ----- 1. Overall match -----
+    st.markdown("## 1. Overall match")
 
-        # Colored score + colored impression
-        st.markdown(
-            f"""
-            <div style="font-size: 1.1rem; margin-bottom: 0.3rem;">
-            Match score for <strong>{title_display}</strong>:
-            <span style="color: {color}; font-weight: 700;">
-                {overall_pct:.1f}%
-            </span>
-            </div>
-            <div style="font-size: 0.95rem; color: {color}; margin-bottom: 0.8rem;">
-            ATS-style impression: <strong>{label}</strong>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        f"""
+        <div style="font-size: 1.1rem; margin-bottom: 0.3rem;">
+        Match score for <strong>{title_display}</strong>:
+        <span style="color: {color}; font-weight: 700;">
+            {overall_pct:.1f}%
+        </span>
+        </div>
+        <div style="font-size: 0.95rem; color: {color}; margin-bottom: 0.8rem;">
+        ATS-style impression: <strong>{label}</strong>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
+    # ----- 2. Score breakdown -----
+    st.markdown("## 2. Score breakdown")
 
-        parts = pd.DataFrame(
-            [
-                ["Similarity (content overlap)",      f"{s_similarity * 100:.1f}%", weights["similarity"]],
-                ["Job-ad keyword coverage",          f"{s_keywords   * 100:.1f}%", weights["keywords"]],
-                ["Soft skills from job ad present",  f"{s_soft       * 100:.1f}%", weights["soft_skills"]],
-                ["Impact signals (numbers, %)",      f"{impact_score * 100:.1f}%", weights["impact"]],
-            ],
-            columns=["Component", "Score", "Weight (normalized)"]
-        )
-        st.markdown("#### Score breakdown")
-        st.dataframe(parts, use_container_width=True)
+    parts = pd.DataFrame(
+        [
+            ["Similarity (content overlap)",      f"{s_similarity * 100:.1f}%", weights["similarity"]],
+            ["Job-ad keyword coverage",          f"{s_keywords   * 100:.1f}%", weights["keywords"]],
+            ["Soft skills from job ad present",  f"{s_soft       * 100:.1f}%", weights["soft_skills"]],
+            ["Impact signals (numbers, %)",      f"{impact_score * 100:.1f}%", weights["impact"]],
+        ],
+        columns=["Component", "Score", "Weight (normalized)"]
+    )
+    st.dataframe(parts, use_container_width=True)
 
-        st.markdown("#### Keywords already in your CV (from the job ad)")
-        st.write(", ".join(sorted(set(present_keywords))) or "—")
+    # ----- 3. Keyword coverage -----
+    st.markdown("## 3. Keyword coverage")
 
-    with col2:
-        st.markdown("#### Top missing keywords (from this job ad)")
-        st.write(", ".join(missing_keywords[:30]) or "—")
+    st.markdown("#### 3.1 Keywords already in your CV (from the job ad)")
+    st.write(", ".join(sorted(set(present_keywords))) or "—")
 
-        if jd_soft:
-            st.markdown("#### Soft skills the job ad mentions")
-            st.write(", ".join(jd_soft))
-            st.markdown("#### Soft skills missing in your CV")
-            st.write(", ".join(missing_soft) or "—")
+    st.markdown("#### 3.2 Top missing keywords (from this job ad)")
+    st.write(", ".join(missing_keywords[:30]) or "—")
+
+    # ----- 4. Soft skills -----
+    if jd_soft:
+        st.markdown("## 4. Soft skills")
+
+        st.markdown("#### 4.1 Soft skills the job ad explicitly mentions")
+        st.write(", ".join(jd_soft))
+
+        st.markdown("#### 4.2 Soft skills missing in your CV")
+        st.write(", ".join(missing_soft) or "—")
+
 
     # -------------------- SUGGESTIONS --------------------
     st.markdown("### Suggestions to improve your score for THIS job application:")
