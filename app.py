@@ -69,9 +69,9 @@ IMPACT_PATTERNS = [
 
 # weights for components 
 DEFAULT_WEIGHTS = {
-    "similarity": 0.40,
-    "keywords": 0.35,
-    "soft_skills": 0.15,
+    "similarity": 0.25,
+    "keywords": 0.45,
+    "soft_skills": 0.20,
     "impact": 0.10,
 }
 
