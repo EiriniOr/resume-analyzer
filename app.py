@@ -23,9 +23,9 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("ATS-style CV and Job Ad Match Estimation")
+st.title("ATS-style job ad matching")
 st.caption(
-    "Compare your CV to any job ad. Get an ATS-style match score plus practical suggestions to improve your chances for the role."
+    "Get an ATS-style match score plus practical suggestions to improve your chances for the role."
 )
 
 # -------------------- CONFIG / CONSTANTS --------------------
@@ -66,13 +66,6 @@ IMPACT_PATTERNS = [
     r"\b(?:reduced|improved|increased|decreased|cut|boosted|saved|grew)\b",
     r"\b(?:revenue|cost|profit|latency|throughput|accuracy|conversion|kpi|sales)\b",
 ]
-
-SECTION_HINTS = {
-    "experience": ["experience","work history","professional experience","employment"],
-    "education": ["education","studies","degree","bachelor","master","phd"],
-    "skills": ["skills","competencies","technologies","tech stack"],
-    "projects": ["projects","portfolio","case study","case studies"],
-}
 
 # weights for components 
 DEFAULT_WEIGHTS = {
@@ -164,7 +157,7 @@ st.sidebar.markdown(
       • Upload your CV and paste the job ad<br>
       • Get an ATS-style match score<br>
       • See missing keywords and receive suggestions<br>
-      • Improve your ATS-style compatibility for that specific role
+      • Weave the missing keywords yourself, or via an LLM and improve your ATS-style compatibility for that specific role
     </div>
     """,
     unsafe_allow_html=True,
@@ -179,15 +172,13 @@ LANGUAGE = st.sidebar.selectbox(
     index=0
 )
 
-st.sidebar.header("CV input")
+st.sidebar.header("Input your CV")
 input_mode = st.sidebar.radio(
     "CV input mode",                  # not shown
     ["Upload file", "Paste text"],
     index=0,
     label_visibility="collapsed",
 )
-
-
 
 resume_file = None
 resume_text = None
@@ -290,9 +281,6 @@ if analyze:
     )
     overall_pct = overall * 100
 
-    # 8) Section detection
-    sections_present = detect_sections(resume_raw)
-
     # -------------------- OUTPUT --------------------
     col1, col2 = st.columns([1.1, 1])
 
@@ -352,22 +340,13 @@ if analyze:
             st.markdown("#### Soft skills missing in your CV")
             st.write(", ".join(missing_soft) or "—")
 
-        st.markdown("#### Basic CV structure check")
-        rows = [
-            ["Experience", "✅" if sections_present["experience"] else "⚠️"],
-            ["Education",  "✅" if sections_present["education"]  else "⚠️"],
-            ["Skills",     "✅" if sections_present["skills"]     else "⚠️"],
-            ["Projects",   "✅" if sections_present["projects"]   else "⚠️"],
-        ]
-        st.table(pd.DataFrame(rows, columns=["Section", "Present?"]))
-
     # -------------------- SUGGESTIONS --------------------
-    st.markdown("### ✅ Suggestions to improve your score for THIS job")
+    st.markdown("### Suggestions to improve your score for THIS job application:")
 
     suggestions = []
 
     # similarity
-    if s_similarity < 0.6:
+    if s_similarity < 0.5:
         suggestions.append(
             "Rewrite your **summary and recent experience** to echo the job ad language "
             "(use similar phrases for responsibilities, tools and outcomes)."
@@ -389,61 +368,15 @@ if analyze:
         )
 
     # impact
-    if impact_score < 0.5:
+    if impact_score < 0.2:
         suggestions.append(
             "Add **numbers** to your bullets where possible: percentages, money saved/earned, time saved, "
             "customers served, etc. (e.g. *\"Increased conversion by 12%\"*, *\"Reduced processing time by 30%\"*)."
         )
 
-    # structure
-    if not sections_present["experience"]:
-        suggestions.append(
-            "Add an **Experience** section with clear job titles, company names, dates, and bullet points."
-        )
-    if not sections_present["education"]:
-        suggestions.append(
-            "Add an **Education** section with your degree(s), institution(s), and graduation year(s)."
-        )
-    if not sections_present["skills"]:
-        suggestions.append(
-            "Add a **Skills** section with relevant tools, technologies and soft skills mentioned in the job ad."
-        )
-    if not sections_present["projects"]:
-        suggestions.append(
-            "Consider adding a **Projects** section for relevant academic, personal, or freelance work."
-        )
-
-    if not suggestions:
-        suggestions.append(
-            "Your CV is already well aligned. Fine-tune wording to mirror the job ad and keep everything "
-            "focused on impact and relevance to this specific role."
-        )
 
     for s in suggestions:
         st.write(f"- {s}")
-
-    # -------------------- BULLET GENERATOR --------------------
-    st.markdown("### Draft bullet ideas")
-
-    # pick keywords for bullets
-    bullet_terms = missing_keywords[:5] or present_keywords[:5]
-
-    bullet_examples = []
-    for term in bullet_terms:
-        bullet_examples.append(
-            f"• Achieved [RESULT] related to **{term}** by [what you did], which led to [number/impact]."
-        )
-
-    if impact_score < 0.5:
-        bullet_examples.append(
-            "• Improved [metric] by [X%/amount] through [your action], demonstrating clear measurable impact."
-        )
-
-    st.text_area(
-        "Bullet examples:",
-        value="\n".join(bullet_examples),
-        height=200
-    )
 
     # -------------------- EXPORTS --------------------
     st.markdown("### ⬇️ Export")
@@ -452,13 +385,6 @@ if analyze:
         "missing_keywords": pd.Series(missing_keywords),
         "missing_soft_skills": pd.Series(missing_soft),
     })
-
-    # st.download_button(
-    #     "Download missing keywords (CSV)",
-    #     data=missing_df.to_csv(index=False),
-    #     file_name="missing_keywords.csv",
-    #     mime="text/csv"
-    # )
 
     report = {
         "job_title": job_title,
