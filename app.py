@@ -18,44 +18,43 @@ except Exception:
     HAS_DOCX = False
 
 HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
-HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
-
-import requests
-
-HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
-HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
+HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "google/flan-t5-large")  
 
 
 def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
     """
-    Call a text-generation model on Hugging Face Inference API.
+    Call a text-generation or text2text model on Hugging Face HF Inference router.
     Returns the generated text or an error message.
     """
     if not HF_API_TOKEN:
         return "[Error] HF_API_TOKEN not set in Streamlit secrets."
 
-    url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+    api_url = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_ID}"
     headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
     payload = {
         "inputs": prompt,
         "parameters": {
             "max_new_tokens": max_new_tokens,
             "temperature": 0.4,
-        }
+        },
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp = requests.post(api_url, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
     except Exception as e:
         return f"[Error calling Hugging Face API: {e}]"
 
     data = resp.json()
-    # HF text-generation usually returns a list of dicts with 'generated_text'
-    if isinstance(data, list) and data and "generated_text" in data[0]:
-        return data[0]["generated_text"]
-    # fallback: just stringify
-    return str(data)
+
+    # Most HF text / text2text models return a list of dicts with 'generated_text'
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        if "generated_text" in data[0]:
+            return data[0]["generated_text"]
+
+    # Fallback – show raw JSON so the user at least sees what came back
+    return json.dumps(data, indent=2)
+
 
 # -------------------- TIPS --------------------
 
