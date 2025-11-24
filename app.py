@@ -18,7 +18,7 @@ except Exception:
     HAS_DOCX = False
 
 HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
-HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "deepseek-ai/DeepSeek-V3.2-Exp")  
+HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "HuggingFaceTB/SmolLM3-3B")  
 
 def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
     """
