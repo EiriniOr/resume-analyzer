@@ -524,10 +524,20 @@ can_analyze = bool(
         or (input_mode == "Paste text" and resume_text and resume_text.strip())
     )
 )
-analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
+
+col1, col2 = st.columns(2)
+with col1:
+    analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
+with col2:
+    generate = st.button(
+        "Generate rewritten CV (analyze + LLM)",
+        disabled=not can_analyze,
+    )
 
 # -------------------- MAIN LOGIC --------------------
-if analyze:
+# Run the analysis if EITHER button was clicked
+if analyze or generate:
+
     # 1) Get resume text
     if input_mode == "Upload file":
         ext = (resume_file.name.split(".")[-1] or "").lower()
@@ -711,53 +721,51 @@ if analyze:
             st.write(", ".join(unique_missing(nice_terms, nice_present)) or "—")
 
 
-    st.markdown("## 6. LLM-assisted CV rewrite (experimental)")
+    # -------- 6. LLM-assisted CV rewrite (only when 'generate' button is clicked) --------
+    if generate:
+        st.markdown("## 6. LLM-assisted CV rewrite (experimental)")
 
-    use_llm = st.checkbox("Generate an improved, ATS-aware CV draft using an LLM (Hugging Face)")
-    if use_llm:
-        if st.button("Generate rewritten CV"):
-            # build prompt using your existing variables
-            prompt = f"""
-    You are an expert CV editor optimising resumes for ATS systems.
+        prompt = f"""
+You are an expert CV editor optimising resumes for ATS systems.
 
-    TASK:
-    Rewrite the following CV so it matches this job as well as possible, while staying truthful.
-    Do NOT invent skills, experience, or technologies that are not already present.
-    You may rephrase, reorder, and emphasise relevant experience, but not lie.
+TASK:
+Rewrite the following CV so it matches this job as well as possible, while staying truthful.
+Do NOT invent skills, experience, or technologies that are not already present.
+You may rephrase, reorder, and emphasise relevant experience, but not lie.
 
-    JOB TITLE (TARGET):
-    {job_title or "N/A"}
+JOB TITLE (TARGET):
+{job_title or "N/A"}
 
-    JOB DESCRIPTION:
-    \"\"\"{jd}\"\"\"
+JOB DESCRIPTION:
+\"\"\"{jd}\"\"\"
 
+ORIGINAL CV:
+\"\"\"{resume_raw}\"\"\"
 
-    ORIGINAL CV:
-    \"\"\"{resume_raw}\"\"\"
+MISSING / IMPORTANT KEYWORDS FROM JOB AD:
+{", ".join(missing_keywords[:20]) or "None detected"}
 
+MISSING SOFT SKILLS FROM JOB AD:
+{", ".join(missing_soft[:10]) or "None detected"}
 
-    MISSING / IMPORTANT KEYWORDS FROM JOB AD:
-    {", ".join(missing_keywords[:20]) or "None detected"}
+CONSTRAINTS:
+- Keep language the same as the original CV (if CV is Swedish, answer in Swedish).
+- Keep a clean, ATS-friendly structure: Summary/Profile, Experience, Education, Skills, etc.
+- Do not use tables or columns.
+- Do not add skills, tools, or degrees that are not in the original CV.
+- Add or rephrase bullets to naturally include relevant, true keywords where possible.
 
-    MISSING SOFT SKILLS FROM JOB AD:
-    {", ".join(missing_soft[:10]) or "None detected"}
-
-    CONSTRAINTS:
-    - Keep language the same as the original CV (if CV is Swedish, answer in Swedish).
-    - Keep a clean, ATS-friendly structure: Summary/Profile, Experience, Education, Skills, etc.
-    - Do not use tables or columns.
-    - Do not add skills, tools, or degrees that are not in the original CV.
-    - Add or rephrase bullets to naturally include relevant, true keywords where possible.
-
-    Now output ONLY the rewritten CV, nothing else.
-    """
+Now output ONLY the rewritten CV, nothing else.
+"""
         with st.spinner("Calling Hugging Face model..."):
             rewritten_cv = call_hf_llm(prompt)
 
         st.markdown("#### LLM-proposed rewritten CV (review before using)")
-        st.text_area("You can copy this and tweak it:", value=rewritten_cv, height=400)
-
-
+        st.text_area(
+            "You can copy this and tweak it:",
+            value=rewritten_cv,
+            height=400,
+        )
     # -------------------- SUGGESTIONS --------------------
     st.markdown("### Suggestions to improve your score for THIS job application:")
 
