@@ -8,6 +8,7 @@ import pandas as pd
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import requests
 
 import PyPDF2
 try:
@@ -15,6 +16,46 @@ try:
     HAS_DOCX = True
 except Exception:
     HAS_DOCX = False
+
+HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
+HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
+
+import requests
+
+HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
+HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.2")
+
+
+def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
+    """
+    Call a text-generation model on Hugging Face Inference API.
+    Returns the generated text or an error message.
+    """
+    if not HF_API_TOKEN:
+        return "[Error] HF_API_TOKEN not set in Streamlit secrets."
+
+    url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": max_new_tokens,
+            "temperature": 0.4,
+        }
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+    except Exception as e:
+        return f"[Error calling Hugging Face API: {e}]"
+
+    data = resp.json()
+    # HF text-generation usually returns a list of dicts with 'generated_text'
+    if isinstance(data, list) and data and "generated_text" in data[0]:
+        return data[0]["generated_text"]
+    # fallback: just stringify
+    return str(data)
 
 # -------------------- TIPS --------------------
 
@@ -668,6 +709,54 @@ if analyze:
 
             st.markdown("#### 5.4 Nice-to-have skills missing")
             st.write(", ".join(unique_missing(nice_terms, nice_present)) or "—")
+
+
+st.markdown("## 6. LLM-assisted CV rewrite (experimental)")
+
+use_llm = st.checkbox("Generate an improved, ATS-aware CV draft using an LLM (Hugging Face)")
+if use_llm:
+    if st.button("Generate rewritten CV"):
+        # build prompt using your existing variables
+        prompt = f"""
+You are an expert CV editor optimising resumes for ATS systems.
+
+TASK:
+Rewrite the following CV so it matches this job as well as possible, while staying truthful.
+Do NOT invent skills, experience, or technologies that are not already present.
+You may rephrase, reorder, and emphasise relevant experience, but not lie.
+
+JOB TITLE (TARGET):
+{job_title or "N/A"}
+
+JOB DESCRIPTION:
+\"\"\"{jd}\"\"\"
+
+
+ORIGINAL CV:
+\"\"\"{resume_raw}\"\"\"
+
+
+MISSING / IMPORTANT KEYWORDS FROM JOB AD:
+{", ".join(missing_keywords[:20]) or "None detected"}
+
+MISSING SOFT SKILLS FROM JOB AD:
+{", ".join(missing_soft[:10]) or "None detected"}
+
+CONSTRAINTS:
+- Keep language the same as the original CV (if CV is Swedish, answer in Swedish).
+- Keep a clean, ATS-friendly structure: Summary/Profile, Experience, Education, Skills, etc.
+- Do not use tables or columns.
+- Do not add skills, tools, or degrees that are not in the original CV.
+- Add or rephrase bullets to naturally include relevant, true keywords where possible.
+
+Now output ONLY the rewritten CV, nothing else.
+"""
+        with st.spinner("Calling Hugging Face model..."):
+            rewritten_cv = call_hf_llm(prompt)
+
+        st.markdown("#### LLM-proposed rewritten CV (review before using)")
+        st.text_area("You can copy this and tweak it:", value=rewritten_cv, height=400)
+
 
     # -------------------- SUGGESTIONS --------------------
     st.markdown("### Suggestions to improve your score for THIS job application:")
