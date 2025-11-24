@@ -66,18 +66,6 @@ def call_llm(prompt: str, max_new_tokens: int = 800) -> str:
         # Fallback: show raw JSON if structure is unexpected
         return json.dumps(data, ensure_ascii=False)
 
-
-    data = resp.json()
-
-    # Most HF text / text2text models return a list of dicts with 'generated_text'
-    if isinstance(data, list) and data and isinstance(data[0], dict):
-        if "generated_text" in data[0]:
-            return data[0]["generated_text"]
-
-    # Fallback – show raw JSON so the user at least sees what came back
-    return json.dumps(data, indent=2)
-
-
 # -------------------- TIPS --------------------
 
 ATS_TIPS_TEXT = """
@@ -742,9 +730,9 @@ if analyze or generate:
             st.write(", ".join(unique_missing(nice_terms, nice_present)) or "—")
 
 
-    # -------- 6. LLM-assisted CV rewrite (only when 'generate' button is clicked) --------
+    # -------- 5. LLM-assisted CV rewrite (only when 'generate' button is clicked) --------
     if generate:
-        st.markdown("## 6. LLM-assisted CV rewrite (experimental)")
+        st.markdown("## 5. LLM-assisted CV rewrite (experimental)")
 
         prompt = f"""
 You are an expert CV editor optimising resumes for ATS systems.
@@ -778,8 +766,8 @@ CONSTRAINTS:
 
 Now output ONLY the rewritten CV, nothing else.
 """
-        with st.spinner("Calling LLM (Groq)..."):
-            rewritten_cv = call_hf_llm(prompt)
+        with st.spinner("Calling LLM (Groq (Llama 3.1))..."):
+            rewritten_cv = call_llm(prompt)
 
         st.markdown("#### LLM-proposed rewritten CV (review before using)")
         st.text_area(
