@@ -21,7 +21,7 @@ except Exception:
 
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
 
-def call_llm(prompt: str, max_new_tokens: int = 800) -> str:
+def call_llm(prompt: str, max_new_tokens: int = 1500) -> str:
     """
     Call a Groq-hosted Llama 3.1 8B model via OpenAI-compatible API.
     Returns the generated text or an error message.
@@ -761,17 +761,20 @@ CONSTRAINTS:
 - Keep language the same as the original CV (if CV is Swedish, answer in Swedish).
 - Keep a clean, ATS-friendly structure: Summary/Profile, Experience, Education, Skills, etc.
 - Do not use tables or columns.
+- Do NOT shorten or summarise the CV: keep roughly the same level of detail and similar length.
+- Preserve ALL roles, dates, employers, education entries and important projects from the original CV.
+- You may rephrase, reorder and group bullets, but do not remove information unless it is clearly duplicated.
 - Do not add skills, tools, or degrees that are not in the original CV.
 - Add or rephrase bullets to naturally include relevant, true keywords where possible.
 
 Now output ONLY the rewritten CV, nothing else.
 """
-        with st.spinner("Calling LLM (Groq (Llama 3.1))..."):
-            rewritten_cv = call_llm(prompt)
+        with st.spinner("Calling LLM..."):
+            rewritten_cv = call_llm(prompt, max_new_tokens=1800)
 
-        st.markdown("#### LLM-proposed rewritten CV (review before using)")
+        st.markdown("")
         st.text_area(
-            "You can copy this and tweak it:",
+            "This text has been generated using a freely hosted and opensource model. You can expect a sub-optimal output. I suggest you use the results above with a reasoning model like ChatGPT for better CV rewriting. Regardless, you can copy this and tweak it:",
             value=rewritten_cv,
             height=400,
         )
