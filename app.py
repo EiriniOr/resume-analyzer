@@ -751,11 +751,11 @@ CONSTRAINTS:
 
 Now output ONLY the rewritten CV, nothing else.
 """
-        with st.spinner("Calling Hugging Face model..."):
-            rewritten_cv = call_hf_llm(prompt)
+    with st.spinner("Calling Hugging Face model..."):
+        rewritten_cv = call_hf_llm(prompt)
 
-        st.markdown("#### LLM-proposed rewritten CV (review before using)")
-        st.text_area("You can copy this and tweak it:", value=rewritten_cv, height=400)
+    st.markdown("#### LLM-proposed rewritten CV (review before using)")
+    st.text_area("You can copy this and tweak it:", value=rewritten_cv, height=400)
 
 
     # -------------------- SUGGESTIONS --------------------
