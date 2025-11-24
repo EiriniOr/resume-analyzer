@@ -29,6 +29,8 @@ ATS_TIPS_TEXT = """
 6. **Tailor for each application** – Reorder bullets, add/remove details so your CV specifically reflects *this* job description.  
 7. **Avoid keyword stuffing** – Repeat key terms a few times in context, but don’t dump buzzwords; humans still read it.  
 8. **Use ATS-friendly files** – Prefer .docx or a text-based PDF, not image-only or heavily designed templates.
+9. **Must-haves and nice-to-haves**: It's generally weighted heavier to have the must have skills, although here I don't make such a distinction to simplify things.
+10. **Last job title**: It is an advantage or sometimes scores high, if your last job title is the same as the one you are pursuing.
 """
 
 
