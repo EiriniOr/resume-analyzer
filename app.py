@@ -2,7 +2,6 @@ import io
 import re
 import json
 from collections import Counter
-import re
 
 import streamlit as st
 import pandas as pd
@@ -29,10 +28,9 @@ ATS_TIPS_TEXT = """
 6. **Tailor for each application** – Reorder bullets, add/remove details so your CV specifically reflects *this* job description.  
 7. **Avoid keyword stuffing** – Repeat key terms a few times in context, but don’t dump buzzwords; humans still read it.  
 8. **Use ATS-friendly files** – Prefer .docx or a text-based PDF, not image-only or heavily designed templates.
-9. **Must-haves and nice-to-haves**: It's generally weighted heavier to have the must have skills, although here I don't make such a distinction to simplify things.
-10. **Last job title**: It is an advantage or sometimes scores high, if your last job title is the same as the one you are pursuing.
+9. **Must-haves and nice-to-haves** – Real ATS usually weigh must-have skills heavier than nice-to-haves.
+10. **Last job title** – It is often an advantage if your last job title is similar or identical to the one you are pursuing.
 """
-
 
 # -------------------- UI CONFIG --------------------
 st.set_page_config(
@@ -42,7 +40,8 @@ st.set_page_config(
 
 st.title("ATS-style job match scorer")
 st.caption(
-    "How high would you relatively score if you applied for an advertised position? Disclaimer, this is an estimation and a real Applicant Tracking System may differ."
+    "How high would you relatively score if you applied for an advertised position? "
+    "Disclaimer: this is an estimation and a real Applicant Tracking System may differ."
 )
 
 # -------------------- CONFIG / CONSTANTS --------------------
@@ -196,12 +195,8 @@ SOFT_SKILLS = {
     }
 }
 
-
-
 def get_stopwords(language: str):
     return STOP_EN if language == "English" else STOP_SV
-
-
 
 IMPACT_PATTERNS = [
     r"\b\d{1,3}%\b",                      # percentages
@@ -210,12 +205,23 @@ IMPACT_PATTERNS = [
     r"\b(?:revenue|cost|profit|latency|throughput|accuracy|conversion|kpi|sales)\b",
 ]
 
-# weights for components 
+# Section hints for simple section-aware scoring
+SECTION_HINTS = {
+    "summary": ["summary", "profile", "about me", "om mig", "profil"],
+    "experience": ["experience", "work experience", "work history", "employment",
+                   "erfarenhet", "arbetslivserfarenhet"],
+    "education": ["education", "utbildning"],
+    "skills": ["skills", "kompetenser", "färdigheter"],
+}
+
+# weights for components (will be normalized later)
 DEFAULT_WEIGHTS = {
-    "similarity": 0.25,
-    "keywords": 0.45,
-    "soft_skills": 0.20,
+    "similarity": 0.20,
+    "keywords": 0.30,
+    "soft_skills": 0.15,
     "impact": 0.10,
+    "scorecard": 0.15,
+    "title": 0.10,
 }
 
 # -------------------- HELPERS --------------------
@@ -264,7 +270,7 @@ def normalize_for_match(word: str, language: str) -> str:
     else:
         # longest suffixes first
         suffixes = [
-            "arna", "erna", "orna",       # t.ex. systemen -> system, kurserna -> kurs
+            "arna", "erna", "orna",
             "ande", "ende",
             "heten", "heter", "het",
             "na", "en", "et",
@@ -275,25 +281,22 @@ def normalize_for_match(word: str, language: str) -> str:
                 return w[:-len(suf)]
         return w
 
-
 def tokenize(text: str, language: str):
     if not text:
         return []
     stop = get_stopwords(language)
 
     # Remove common punctuation so "word." / "word," / "\"word\"" → "word"
-    # (but keep +, #, %, _, /, (), etc. for tech terms)
     text = re.sub(r"[.,;:!?\"“”‘’]", " ", text)
 
     # Build tokens without dots so we don't get "word."
     raw_tokens = re.findall(
-        r"[\w#+\-_/()%]{2,}",  # note: '.' removed here
+        r"[\w#+\-_/()%]{2,}",
         text.lower(),
         flags=re.UNICODE,
     )
 
     return [w for w in raw_tokens if w not in stop]
-
 
 def tfidf_cosine(a: str, b: str, language: str) -> float:
     stop_words = "english" if language == "English" else None
@@ -333,6 +336,71 @@ def detect_sections(text: str) -> dict:
         present[name] = any(h in text_low for h in hints)
     return present
 
+def split_sections(raw_text: str) -> dict:
+    """
+    Very simple section splitter based on headings.
+    """
+    sections = {"summary": "", "experience": "", "education": "", "skills": "", "other": ""}
+    current = "other"
+    for line in raw_text.splitlines():
+        low = line.lower().strip()
+        matched = False
+        for sec, hints in SECTION_HINTS.items():
+            if any(h in low for h in hints):
+                current = sec
+                matched = True
+                break
+        if not matched:
+            sections[current] += line + "\n"
+    return sections
+
+def norm_coverage(present: list[str], total: list[str]) -> float:
+    if not total:
+        return 0.0
+    return len(set(present)) / len(set(total))
+
+def keyword_section_bonus(jd_keywords_norm, sections, language: str) -> float:
+    """
+    Bonus coverage if job-ad keywords appear in high-value sections (summary + experience).
+    """
+    if not jd_keywords_norm:
+        return 0.0
+    high_text = sections.get("experience", "") + "\n" + sections.get("summary", "")
+    high_tokens = tokenize(clean(high_text), language)
+    high_norm = {normalize_for_match(w, language) for w in high_tokens}
+    hits_high = {w for w in jd_keywords_norm if w in high_norm}
+    return len(hits_high) / len(set(jd_keywords_norm)) if jd_keywords_norm else 0.0
+
+def simple_title_similarity(job_title: str, cv_text: str) -> float:
+    """
+    Simple Jaccard-like similarity between the job title and short lines in the CV.
+    """
+    if not job_title:
+        return 0.0
+    jt_tokens = set(re.findall(r"\w+", job_title.lower()))
+    if not jt_tokens:
+        return 0.0
+
+    best = 0.0
+    for line in cv_text.splitlines():
+        line = line.strip()
+        if not line or len(line) > 80:
+            continue
+        ltokens = set(re.findall(r"\w+", line.lower()))
+        if not ltokens:
+            continue
+        inter = len(jt_tokens & ltokens)
+        union = len(jt_tokens | ltokens)
+        sim = inter / union
+        if sim > best:
+            best = sim
+    return best
+
+def parse_list(raw: str) -> list[str]:
+    if not raw:
+        return []
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
 # -------------------- SIDEBAR: INPUT --------------------
 st.sidebar.markdown(
     """
@@ -347,12 +415,11 @@ st.sidebar.markdown(
       • Upload your CV and paste the job ad<br>
       • Get an ATS-style match score<br>
       • See missing keywords and receive suggestions<br>
-      • Weave the missing keywords/skills into your CV yourself, or via an LLM and improve your ATS-style compatibility for that specific role
+      • Weave the missing keywords/skills into your CV yourself, or via an LLM, and improve your ATS-style compatibility for that specific role
     </div>
     """,
     unsafe_allow_html=True,
 )
-
 
 st.sidebar.header("Language")
 
@@ -364,7 +431,7 @@ LANGUAGE = st.sidebar.selectbox(
 
 st.sidebar.header("Input your CV")
 input_mode = st.sidebar.radio(
-    "CV input mode",                  # not shown
+    "CV input mode",
     ["Upload file", "Paste text"],
     index=0,
     label_visibility="collapsed",
@@ -385,12 +452,23 @@ else:
         placeholder="Paste your CV here..."
     )
 
+# -------------------- MAIN INPUTS --------------------
 st.subheader("Insert the job advertisement information:")
 job_title = st.text_input("Job title (optional, for context)", placeholder="e.g. Data Scientist, Marketing Specialist, Nurse...")
 jd = st.text_area(
     "Paste the Job Description",
     height=260,
     placeholder="Paste responsibilities, requirements, skills, expectations, etc..."
+)
+
+st.markdown("#### Optional: fine-tune matching (must-haves & nice-to-haves)")
+required_raw = st.text_input(
+    "Required skills/keywords (comma separated)",
+    placeholder="e.g. Python, stakeholder management, Scrum"
+)
+nice_raw = st.text_input(
+    "Nice-to-have skills/keywords (comma separated)",
+    placeholder="e.g. Power BI, Kubernetes, AB testing"
 )
 
 can_analyze = bool(
@@ -402,8 +480,7 @@ can_analyze = bool(
 analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
 
 with st.expander("Quick tips how to prepare your CV:"):
-        st.markdown(ATS_TIPS_TEXT)
-
+    st.markdown(ATS_TIPS_TEXT)
 
 # -------------------- MAIN LOGIC --------------------
 if analyze:
@@ -427,9 +504,10 @@ if analyze:
     jd_clean = clean(jd)
     cv_clean = clean(resume_raw)
 
+    sections = split_sections(resume_raw)
+
     # 2) TF-IDF similarity
     similarity = tfidf_cosine(jd_clean, cv_clean, LANGUAGE)
-
 
     # 3) Job-ad keywords (generic)
     jd_tokens = [t for t in tokenize(jd_clean, LANGUAGE) if len(t) >= 3]
@@ -448,8 +526,7 @@ if analyze:
     present_keywords_norm = sorted({w for w in jd_keywords_norm if w in cv_norm_set})
     missing_keywords_norm = unique_missing(jd_keywords_norm, present_keywords_norm)
 
-
-    # present vs missing keywords
+    # present vs missing keywords (plain forms)
     _, present_keywords = count_hits(cv_clean, jd_keywords)
     missing_keywords = unique_missing(jd_keywords, present_keywords)
 
@@ -459,32 +536,49 @@ if analyze:
     _, present_soft = count_hits(cv_clean, jd_soft)
     missing_soft = unique_missing(jd_soft, present_soft)
 
-
     # 5) Impact signals
     impact_raw = find_impact_signals(cv_clean)
     impact_score = min(1.0, impact_raw / 6.0)  # saturate around ~6 signals
 
     # 6) Normalised component scores
-    def norm_coverage(present: list[str], total: list[str]) -> float:
-        if not total:
-            return 0.0
-        return len(set(present)) / len(set(total))
-
-    s_keywords = norm_coverage(present_keywords_norm, jd_keywords_norm)
-
+    s_keywords_base = norm_coverage(present_keywords_norm, jd_keywords_norm)
     s_soft = norm_coverage(present_soft, jd_soft)
     s_similarity = similarity
 
-    # 7) Weighted overall score (0–1)
+    # Section-aware bonus for keywords in summary/experience
+    bonus_keywords = keyword_section_bonus(jd_keywords_norm, sections, LANGUAGE)
+    s_keywords_weighted = min(1.0, s_keywords_base + 0.5 * bonus_keywords)
+
+    # 7) Scorecard-style required / nice-to-have coverage
+    required_terms = parse_list(required_raw)
+    nice_terms = parse_list(nice_raw)
+
+    _, req_present = count_hits(cv_clean, required_terms)
+    _, nice_present = count_hits(cv_clean, nice_terms)
+
+    req_cov = norm_coverage(req_present, required_terms)
+    nice_cov = norm_coverage(nice_present, nice_terms)
+
+    scorecard_component = 0.0
+    if required_terms or nice_terms:
+        # weight required more heavily than nice-to-have
+        scorecard_component = 0.7 * req_cov + 0.3 * nice_cov
+
+    # 8) Job-title similarity component
+    title_match = simple_title_similarity(job_title, resume_raw) if job_title else 0.0
+
+    # 9) Weighted overall score (0–1)
     w = DEFAULT_WEIGHTS.copy()
     wsum = sum(w.values())
     weights = {k: v / wsum for k, v in w.items()}
 
     overall = (
         weights["similarity"]   * s_similarity +
-        weights["keywords"]     * s_keywords +
+        weights["keywords"]     * s_keywords_weighted +
         weights["soft_skills"]  * s_soft +
-        weights["impact"]       * impact_score
+        weights["impact"]       * impact_score +
+        weights["scorecard"]    * scorecard_component +
+        weights["title"]        * title_match
     )
     overall_pct = overall * 100
 
@@ -510,8 +604,7 @@ if analyze:
         <div style="font-size: 1.1rem; margin-bottom: 0.3rem;">
         Match score for <strong>{title_display}</strong>:
         <span style="color: {color}; font-weight: 700;">
-            {overall_pct:.1f}%
-        </span>
+            {overall_pct:.1f}%</span>
         </div>
         <div style="font-size: 0.95rem; color: {color}; margin-bottom: 0.8rem;">
         ATS-style impression: <strong>{label}</strong>
@@ -525,10 +618,12 @@ if analyze:
 
     parts = pd.DataFrame(
         [
-            ["Similarity (content overlap)",      f"{s_similarity * 100:.1f}%", weights["similarity"]],
-            ["Job-ad keyword coverage",          f"{s_keywords   * 100:.1f}%", weights["keywords"]],
-            ["Soft skills from job ad present",  f"{s_soft       * 100:.1f}%", weights["soft_skills"]],
-            ["Impact signals (numbers, %)",      f"{impact_score * 100:.1f}%", weights["impact"]],
+            ["Similarity (content overlap)",      f"{s_similarity * 100:.1f}%",       weights["similarity"]],
+            ["Job-ad keyword coverage (section-aware)", f"{s_keywords_weighted * 100:.1f}%", weights["keywords"]],
+            ["Soft skills from job ad present",  f"{s_soft * 100:.1f}%",             weights["soft_skills"]],
+            ["Impact signals (numbers, %)",      f"{impact_score * 100:.1f}%",       weights["impact"]],
+            ["Required/nice-to-have coverage",   f"{scorecard_component * 100:.1f}%", weights["scorecard"]],
+            ["Job-title similarity",             f"{title_match * 100:.1f}%",        weights["title"]],
         ],
         columns=["Component", "Score", "Weight (normalized)"]
     )
@@ -537,10 +632,10 @@ if analyze:
     # ----- 3. Keyword coverage -----
     st.markdown("## 3. Keyword coverage")
 
-    st.markdown("#### 3.1 Keywords already in your CV (from the job ad)")
+    st.markdown("#### 3.1 Keywords already in your CV (from the job ad, normalized)")
     st.write(", ".join(sorted(set(present_keywords_norm))) or "—")
 
-    st.markdown("#### 3.2 Top missing keywords (from this job ad)")
+    st.markdown("#### 3.2 Top missing keywords (from this job ad, normalized)")
     st.write(", ".join(missing_keywords_norm[:30]) or "—")
 
     # ----- 4. Soft skills -----
@@ -553,6 +648,23 @@ if analyze:
         st.markdown("#### 4.2 Soft skills missing in your CV")
         st.write(", ".join(missing_soft) or "—")
 
+    # ----- 5. Required / nice-to-have reporting -----
+    if required_terms or nice_terms:
+        st.markdown("## 5. Scorecard-style skills")
+
+        if required_terms:
+            st.markdown("#### 5.1 Required skills present")
+            st.write(", ".join(sorted(set(req_present))) or "—")
+
+            st.markdown("#### 5.2 Required skills missing")
+            st.write(", ".join(unique_missing(required_terms, req_present)) or "—")
+
+        if nice_terms:
+            st.markdown("#### 5.3 Nice-to-have skills present")
+            st.write(", ".join(sorted(set(nice_present))) or "—")
+
+            st.markdown("#### 5.4 Nice-to-have skills missing")
+            st.write(", ".join(unique_missing(nice_terms, nice_present)) or "—")
 
     # -------------------- SUGGESTIONS --------------------
     st.markdown("### Suggestions to improve your score for THIS job application:")
@@ -567,7 +679,7 @@ if analyze:
         )
 
     # keywords
-    if s_keywords < 0.7 and missing_keywords:
+    if s_keywords_weighted < 0.7 and missing_keywords:
         suggestions.append(
             "Add some of the **most important missing keywords** (if they are true for you), "
             "especially in your summary and in the top 1–2 roles: "
@@ -588,11 +700,24 @@ if analyze:
             "customers served, etc. (e.g. *\"Increased conversion by 12%\"*, *\"Reduced processing time by 30%\"*)."
         )
 
+    # scorecard
+    if required_terms and req_cov < 1.0:
+        suggestions.append(
+            "Check the **required skills** you entered. If you truly have them, make sure they appear clearly "
+            "in your CV (ideally in your recent experience and skills section)."
+        )
 
-    for s in suggestions:
-        st.write(f"- {s}")
+    if job_title and title_match < 0.5:
+        suggestions.append(
+            "Consider aligning your **current/last job title or summary** more closely with the target role, "
+            "if it honestly reflects your experience."
+        )
 
-
+    if suggestions:
+        for s in suggestions:
+            st.write(f"- {s}")
+    else:
+        st.write("- Your CV already aligns quite well with this job according to this estimator.")
 
 st.markdown(
     """
