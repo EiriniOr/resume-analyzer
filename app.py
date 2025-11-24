@@ -399,6 +399,10 @@ can_analyze = bool(
 )
 analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
 
+with st.expander("Quick tips how to prepare your CV:"):
+        st.markdown(ATS_TIPS_TEXT)
+
+
 # -------------------- MAIN LOGIC --------------------
 if analyze:
     # 1) Get resume text
@@ -586,8 +590,6 @@ if analyze:
     for s in suggestions:
         st.write(f"- {s}")
 
-    with st.expander("Quick tips how to prepare your CV:"):
-        st.markdown(ATS_TIPS_TEXT)
 
 
 st.markdown(
