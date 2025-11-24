@@ -453,6 +453,12 @@ else:
     )
 
 # -------------------- MAIN INPUTS --------------------
+
+
+with st.expander("Quick tips how to prepare your CV:"):
+    st.markdown(ATS_TIPS_TEXT)
+
+
 st.subheader("Insert the job advertisement information:")
 job_title = st.text_input("Job title (optional, for context)", placeholder="e.g. Data Scientist, Marketing Specialist, Nurse...")
 jd = st.text_area(
@@ -478,9 +484,6 @@ can_analyze = bool(
     )
 )
 analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
-
-with st.expander("Quick tips how to prepare your CV:"):
-    st.markdown(ATS_TIPS_TEXT)
 
 # -------------------- MAIN LOGIC --------------------
 if analyze:
