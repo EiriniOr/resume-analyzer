@@ -17,13 +17,28 @@ try:
 except Exception:
     HAS_DOCX = False
 
+# -------------------- TIPS --------------------
+
+ATS_TIPS_TEXT = """
+
+1. **Mirror the job ad** – Use the same key skills and phrases (truthfully) in your CV, especially in your summary and recent roles.  
+2. **Use simple formatting** – One column, no tables or graphics, standard headings (Experience, Education, Skills) so ATS can parse correctly.  
+3. **Match titles where you can** – Align your title/summary with the target role (e.g. “Product Owner / Data Scientist”) if it reflects your experience.  
+4. **Put important keywords high** – Prioritise the most relevant tools, domains and responsibilities in the top third of your CV.  
+5. **Add a clear skills section** – List core tools, methods and languages in a dedicated Skills/Kompetenser section for easy matching.  
+6. **Tailor for each application** – Reorder bullets, add/remove details so your CV specifically reflects *this* job description.  
+7. **Avoid keyword stuffing** – Repeat key terms a few times in context, but don’t dump buzzwords; humans still read it.  
+8. **Use ATS-friendly files** – Prefer .docx or a text-based PDF, not image-only or heavily designed templates.
+"""
+
+
 # -------------------- UI CONFIG --------------------
 st.set_page_config(
-    page_title="ATS-style CV and Job Ad Match Estimation",
+    page_title="ATS-style Job Match Scorer",
     layout="wide"
 )
 
-st.title("ATS-style job ad matching")
+st.title("ATS-style job match scorer")
 st.caption(
     "How high would you relatively score if you applied for an advertised position? Disclaimer, this is an estimation and a real Applicant Tracking System may differ."
 )
@@ -570,6 +585,10 @@ if analyze:
 
     for s in suggestions:
         st.write(f"- {s}")
+
+    with st.expander("Quick tips how to prepare your CV:"):
+        st.markdown(ATS_TIPS_TEXT)
+
 
 st.markdown(
     """
