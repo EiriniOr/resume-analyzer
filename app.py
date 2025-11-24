@@ -18,7 +18,7 @@ except Exception:
     HAS_DOCX = False
 
 HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
-HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "HuggingFaceTB/SmolLM3-3B")  
+HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")  
 
 def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
     """
@@ -29,8 +29,8 @@ def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
         return "[Error] HF_API_TOKEN not set in Streamlit secrets."
 
     # NEW endpoint (router + inference providers)
-    url = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_ID}"
 
+    url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
     headers = {
         "Authorization": f"Bearer {HF_API_TOKEN}",
         "Content-Type": "application/json",
@@ -547,7 +547,7 @@ with col1:
     analyze = st.button("Analyze match", type="primary", disabled=not can_analyze)
 with col2:
     generate = st.button(
-        "Generate rewritten CV (analyze + LLM)",
+        "Analyze match and Generate new CV/Free version limited performance!",
         disabled=not can_analyze,
     )
 
