@@ -20,16 +20,17 @@ except Exception:
 HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
 HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "openai/gpt-oss-20b")  
 
-
 def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
     """
-    Call a text-generation or text2text model on the classic Hugging Face
-    Inference API (serverless). Returns the generated text or an error message.
+    Call a text-generation model on Hugging Face Inference Providers.
+    Returns the generated text or an error message.
     """
     if not HF_API_TOKEN:
         return "[Error] HF_API_TOKEN not set in Streamlit secrets."
 
-    api_url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+    # NEW endpoint (router + inference providers)
+    url = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_ID}"
+
     headers = {
         "Authorization": f"Bearer {HF_API_TOKEN}",
         "Content-Type": "application/json",
@@ -39,27 +40,27 @@ def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
         "parameters": {
             "max_new_tokens": max_new_tokens,
             "temperature": 0.4,
-        },
+        }
     }
 
     try:
-        resp = requests.post(api_url, headers=headers, json=payload, timeout=60)
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
     except Exception as e:
         return f"[Error calling Hugging Face API: {e}]"
 
     data = resp.json()
 
-    # Typical shape: [{"generated_text": "..."}]
-    if isinstance(data, list) and data and isinstance(data[0], dict):
-        if "generated_text" in data[0]:
-            return data[0]["generated_text"]
-
-    # Fallback – show raw JSON so you at least see what came back
+    # Most HF text-generation providers return a list with generated_text
+    # Adjust if your chosen model uses a slightly different structure.
     try:
-        return json.dumps(data, indent=2)
+        if isinstance(data, list) and data and "generated_text" in data[0]:
+            return data[0]["generated_text"]
+        # Fallback – just stringify whatever came back
+        return json.dumps(data, ensure_ascii=False)
     except Exception:
-        return str(data)
+        return json.dumps(data, ensure_ascii=False)
+
 
 
     data = resp.json()
