@@ -23,14 +23,17 @@ HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "microsoft/Phi-3-mini-4k-instruct")
 
 def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
     """
-    Call a text-generation or text2text model on Hugging Face HF Inference router.
-    Returns the generated text or an error message.
+    Call a text-generation or text2text model on the classic Hugging Face
+    Inference API (serverless). Returns the generated text or an error message.
     """
     if not HF_API_TOKEN:
         return "[Error] HF_API_TOKEN not set in Streamlit secrets."
 
-    api_url = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_ID}"
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+    api_url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+    headers = {
+        "Authorization": f"Bearer {HF_API_TOKEN}",
+        "Content-Type": "application/json",
+    }
     payload = {
         "inputs": prompt,
         "parameters": {
@@ -44,6 +47,20 @@ def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
         resp.raise_for_status()
     except Exception as e:
         return f"[Error calling Hugging Face API: {e}]"
+
+    data = resp.json()
+
+    # Typical shape: [{"generated_text": "..."}]
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        if "generated_text" in data[0]:
+            return data[0]["generated_text"]
+
+    # Fallback – show raw JSON so you at least see what came back
+    try:
+        return json.dumps(data, indent=2)
+    except Exception:
+        return str(data)
+
 
     data = resp.json()
 
