@@ -17,50 +17,54 @@ try:
 except Exception:
     HAS_DOCX = False
 
-HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", "")
-HF_MODEL_ID = st.secrets.get("HF_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")  
 
-def call_hf_llm(prompt: str, max_new_tokens: int = 800) -> str:
+
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
+
+def call_llm(prompt: str, max_new_tokens: int = 800) -> str:
     """
-    Call a text-generation model on Hugging Face Inference Providers.
+    Call a Groq-hosted Llama 3.1 8B model via OpenAI-compatible API.
     Returns the generated text or an error message.
     """
-    if not HF_API_TOKEN:
-        return "[Error] HF_API_TOKEN not set in Streamlit secrets."
+    if not GROQ_API_KEY:
+        return "[Error] GROQ_API_KEY not set in Streamlit secrets."
 
-    # NEW endpoint (router + inference providers)
-
-    url = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {HF_API_TOKEN}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": max_new_tokens,
-            "temperature": 0.4,
-        }
+        "model": "llama-3.1-8b-instant",  # good general-purpose model
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert CV editor optimising resumes for ATS systems. "
+                    "You rewrite CVs to better match a given job ad, but never invent skills or experience."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        "temperature": 0.4,
+        "max_tokens": max_new_tokens,
     }
 
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
     except Exception as e:
-        return f"[Error calling Hugging Face API: {e}]"
+        return f"[Error calling Groq API: {e}]"
 
     data = resp.json()
-
-    # Most HF text-generation providers return a list with generated_text
-    # Adjust if your chosen model uses a slightly different structure.
     try:
-        if isinstance(data, list) and data and "generated_text" in data[0]:
-            return data[0]["generated_text"]
-        # Fallback – just stringify whatever came back
-        return json.dumps(data, ensure_ascii=False)
+        return data["choices"][0]["message"]["content"]
     except Exception:
+        # Fallback: show raw JSON if structure is unexpected
         return json.dumps(data, ensure_ascii=False)
-
 
 
     data = resp.json()
@@ -774,7 +778,7 @@ CONSTRAINTS:
 
 Now output ONLY the rewritten CV, nothing else.
 """
-        with st.spinner("Calling Hugging Face model..."):
+        with st.spinner("Calling LLM (Groq)..."):
             rewritten_cv = call_hf_llm(prompt)
 
         st.markdown("#### LLM-proposed rewritten CV (review before using)")
